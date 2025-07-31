@@ -6,7 +6,7 @@ echo "Starting Text IDE..."
 echo "Starting backend server..."
 cd backend
 pip install -r requirements.txt
-python main.py &
+uvicorn main:app --host 0.0.0.0 --port 8001 &
 BACKEND_PID=$!
 
 # Wait a bit for backend to start
