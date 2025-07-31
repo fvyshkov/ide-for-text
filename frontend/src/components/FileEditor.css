@@ -1,0 +1,108 @@
+.file-editor {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #1e1e1e;
+}
+
+.file-editor.loading {
+  justify-content: center;
+  align-items: center;
+}
+
+.loading-spinner {
+  color: #cccccc;
+  font-size: 1.1rem;
+}
+
+.file-editor.empty {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: #a0a0a0;
+}
+
+.empty-state h3 {
+  margin: 0 0 10px 0;
+  color: #cccccc;
+  font-weight: normal;
+}
+
+.empty-state p {
+  margin: 0;
+  font-style: italic;
+}
+
+.file-editor.binary {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: #a0a0a0;
+}
+
+.binary-file-message h3 {
+  margin: 0 0 10px 0;
+  color: #cccccc;
+  font-weight: normal;
+}
+
+.binary-file-message p {
+  margin: 5px 0;
+}
+
+.file-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 15px;
+  background-color: #2d2d30;
+  border-bottom: 1px solid #3c3c3c;
+  min-height: 35px;
+}
+
+.file-name {
+  font-weight: 600;
+  color: #ffffff;
+  font-size: 0.95rem;
+}
+
+.file-path {
+  font-size: 0.8rem;
+  color: #a0a0a0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-container {
+  flex: 1;
+  height: calc(100% - 53px);
+  overflow: hidden;
+}
+
+/* Monaco editor specific adjustments */
+.editor-container .monaco-editor {
+  background-color: #1e1e1e !important;
+}
+
+.editor-container .monaco-editor .margin {
+  background-color: #1e1e1e !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .file-editor-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 15px;
+  }
+  
+  .file-path {
+    max-width: 100%;
+    word-break: break-all;
+    white-space: normal;
+  }
+}

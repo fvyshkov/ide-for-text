@@ -1,0 +1,148 @@
+.file-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 5px 0;
+}
+
+.file-tree.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #a0a0a0;
+  padding: 20px;
+}
+
+.file-tree.empty p {
+  margin: 0;
+  font-style: italic;
+}
+
+.tree-node {
+  user-select: none;
+}
+
+.tree-node-content {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 4px 0;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tree-node-content:hover {
+  background-color: #2a2d2e;
+}
+
+.tree-node-content.selected {
+  background-color: #094771;
+  color: #ffffff;
+}
+
+.tree-node-content.selected:hover {
+  background-color: #0e5a87;
+}
+
+.tree-node-icon {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  min-width: 40px;
+}
+
+.tree-node-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  color: #cccccc;
+}
+
+.tree-node-icon svg {
+  font-size: 14px;
+  color: #cccccc;
+}
+
+.tree-node-content.selected .tree-node-icon svg {
+  color: #ffffff;
+}
+
+.tree-node-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-node-children {
+  /* Children are indented via inline styles */
+}
+
+/* File type specific icons */
+.tree-node-content .tree-node-icon svg {
+  color: #cccccc;
+}
+
+/* Directory icons */
+.tree-node-content .tree-node-icon svg[data-icon="folder"] {
+  color: #dcb67a;
+}
+
+.tree-node-content .tree-node-icon svg[data-icon="folder-open"] {
+  color: #dcb67a;
+}
+
+/* File icons could be customized based on extension */
+.tree-node-content[data-extension=".js"] .tree-node-icon svg,
+.tree-node-content[data-extension=".jsx"] .tree-node-icon svg {
+  color: #f7df1e;
+}
+
+.tree-node-content[data-extension=".ts"] .tree-node-icon svg,
+.tree-node-content[data-extension=".tsx"] .tree-node-icon svg {
+  color: #3178c6;
+}
+
+.tree-node-content[data-extension=".py"] .tree-node-icon svg {
+  color: #3776ab;
+}
+
+.tree-node-content[data-extension=".json"] .tree-node-icon svg {
+  color: #f7df1e;
+}
+
+.tree-node-content[data-extension=".css"] .tree-node-icon svg {
+  color: #1572b6;
+}
+
+.tree-node-content[data-extension=".html"] .tree-node-icon svg {
+  color: #e34f26;
+}
+
+.tree-node-content[data-extension=".md"] .tree-node-icon svg {
+  color: #083fa1;
+}
+
+/* Scrollbar styling */
+.file-tree::-webkit-scrollbar {
+  width: 8px;
+}
+
+.file-tree::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+.file-tree::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.file-tree::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}

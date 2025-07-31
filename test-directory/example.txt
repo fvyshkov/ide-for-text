@@ -1,0 +1,12 @@
+Hello, this is a test file for our Text IDE!
+
+You can edit this file to test the application.
+
+Features to test:
+- File tree navigation
+- Opening files
+- Editing content
+- Auto-saving
+- Real-time synchronization
+
+Try making some changes here and see if they save automatically!
