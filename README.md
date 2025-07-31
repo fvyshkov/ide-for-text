@@ -34,7 +34,21 @@ ide-for-text/
 
 ## Setup and Running
 
-### Backend (FastAPI)
+### Quick Start
+
+Use the provided startup scripts from the project root:
+
+```bash
+# Start backend (in terminal 1)
+./run-backend.sh
+
+# Start frontend (in terminal 2)
+./run-frontend.sh
+```
+
+### Manual Setup
+
+#### Backend (FastAPI)
 
 1. Navigate to the backend directory:
    ```bash
@@ -48,7 +62,7 @@ ide-for-text/
 
 3. Run the backend server:
    ```bash
-   python main.py
+   uvicorn main:app --host 0.0.0.0 --port 8001 --reload
    ```
 
    The backend will be available at `http://localhost:8001`
