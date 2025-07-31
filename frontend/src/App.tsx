@@ -5,7 +5,7 @@ import FileEditor from './components/FileEditor';
 import ResizableSplitter from './components/ResizableSplitter';
 import { FileTreeItem, FileContent } from './types';
 import { useTheme } from './contexts/ThemeContext';
-import { pickDirectoryEnhanced } from './utils/fileSystemAccess';
+import { pickDirectorySimple } from './utils/fileSystemAccess';
 import { FaSun, FaMoon, FaFolder } from 'react-icons/fa';
 
 const API_BASE_URL = 'http://localhost:8001';
@@ -60,11 +60,16 @@ function App() {
   }, [selectedFile, rootPath]);
 
   const openDirectory = async () => {
+    let directoryPath = '';
     try {
-      const directoryPath = await pickDirectoryEnhanced();
-      if (!directoryPath) return; // User cancelled
+      const directoryName = await pickDirectorySimple();
+      if (!directoryName) return; // User cancelled
 
       setIsLoading(true);
+      
+      // Try relative path first
+      directoryPath = `./${directoryName}`;
+      
       const response = await fetch(`${API_BASE_URL}/api/open-directory`, {
         method: 'POST',
         headers: {
@@ -82,7 +87,7 @@ function App() {
       setRootPath(data.root_path);
     } catch (error) {
       console.error('Error opening directory:', error);
-      alert('Error opening directory. Please check the path and try again.');
+      alert(`Error opening directory "${directoryPath}". Make sure the folder exists in the current directory or try again.`);
     } finally {
       setIsLoading(false);
     }

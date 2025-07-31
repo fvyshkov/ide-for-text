@@ -15,6 +15,43 @@ export const isFileSystemAccessSupported = (): boolean => {
 };
 
 /**
+ * Open directory using file input (webkitdirectory)
+ * More compatible and doesn't require full paths
+ */
+export const pickDirectoryWithInput = (): Promise<string | null> => {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.multiple = true;
+    
+    input.onchange = (event) => {
+      const files = (event.target as HTMLInputElement).files;
+      if (files && files.length > 0) {
+        // Get the directory path from the first file
+        const firstFile = files[0];
+        const relativePath = firstFile.webkitRelativePath;
+        const directoryName = relativePath.split('/')[0];
+        
+        // Store files for potential use
+        (window as any).selectedFiles = files;
+        
+        resolve(directoryName);
+      } else {
+        resolve(null);
+      }
+    };
+    
+    input.oncancel = () => {
+      resolve(null);
+    };
+    
+    // Trigger the file picker
+    input.click();
+  });
+};
+
+/**
  * Open native directory picker dialog
  * Falls back to prompt if not supported
  */
@@ -32,8 +69,8 @@ export const pickDirectory = async (options: DirectoryPickerOptions = {}): Promi
       // We'll use the handle name and let backend handle the actual path
       return directoryHandle.name;
     } else {
-      // Fallback to manual input
-      return promptForDirectory();
+      // Fallback to webkitdirectory input
+      return await pickDirectoryWithInput();
     }
   } catch (error) {
     // User cancelled or error occurred
@@ -41,8 +78,8 @@ export const pickDirectory = async (options: DirectoryPickerOptions = {}): Promi
       return null; // User cancelled
     }
     
-    console.warn('Directory picker failed, falling back to manual input:', error);
-    return promptForDirectory();
+    console.warn('Directory picker failed, falling back to input:', error);
+    return await pickDirectoryWithInput();
   }
 };
 
@@ -96,52 +133,9 @@ export const getDirectorySuggestions = (): string[] => {
 };
 
 /**
- * Enhanced directory picker with better UX
+ * Simple directory picker - just pick and use
  */
-export const pickDirectoryEnhanced = async (): Promise<string | null> => {
-  try {
-    if (isFileSystemAccessSupported()) {
-      // Try native picker first
-      const directoryHandle = await (window as any).showDirectoryPicker({
-        mode: 'read'
-      });
-      
-      // For File System Access API, we need to work with the handle
-      // Since we can't get the full path, we'll pass the handle name
-      // and let the user know this is a browser limitation
-      
-      const folderName = directoryHandle.name;
-      
-      // Offer user better options for path handling
-      const userChoice = window.confirm(
-        `✅ Folder selected: "${folderName}"\n\n` +
-        '🎯 Choose how to proceed:\n\n' +
-        'OK = Enter full absolute path manually\n' +
-        'Cancel = Use relative path (./' + folderName + ')\n\n' +
-        '💡 Tip: Relative path works if the folder is in your current directory'
-      );
-      
-      if (userChoice) {
-        // User wants to enter full path manually
-        const fullPath = prompt(
-          `Enter the full path to "${folderName}":\n\n` +
-          'Examples:\n' +
-          `• macOS: /Users/username/path/to/${folderName}\n` +
-          `• Windows: C:\\Users\\username\\path\\to\\${folderName}\n` +
-          `• Linux: /home/username/path/to/${folderName}`
-        );
-        return fullPath;
-      } else {
-        // Use relative path
-        return `./${folderName}`;
-      }
-    } else {
-      return promptForDirectory();
-    }
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      return null;
-    }
-    return promptForDirectory();
-  }
+export const pickDirectorySimple = async (): Promise<string | null> => {
+  // Always use the input-based picker for simplicity
+  return await pickDirectoryWithInput();
 };
