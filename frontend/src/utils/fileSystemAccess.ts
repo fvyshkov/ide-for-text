@@ -51,12 +51,14 @@ export const pickDirectory = async (options: DirectoryPickerOptions = {}): Promi
  */
 const promptForDirectory = (): string | null => {
   const path = prompt(
-    'Enter directory path:\n\n' +
-    'Examples:\n' +
+    '📁 Enter directory path:\n\n' +
+    '💡 Quick options:\n' +
+    '• Test directory: ./test-directory\n' +
+    '• Current directory: .\n\n' +
+    '📂 Or full paths:\n' +
     '• macOS: /Users/username/Documents\n' +
     '• Windows: C:\\Users\\username\\Documents\n' +
-    '• Linux: /home/username/Documents\n' +
-    '• Current project: ./test-directory'
+    '• Linux: /home/username/Documents'
   );
   
   return path;
@@ -110,18 +112,27 @@ export const pickDirectoryEnhanced = async (): Promise<string | null> => {
       
       const folderName = directoryHandle.name;
       
-      // We could also try to resolve relative path, but for now
-      // let's use a different approach - ask user to confirm or enter full path
-      const shouldUseFullPath = window.confirm(
-        `Selected folder: "${folderName}"\n\n` +
-        'Due to browser security restrictions, we need the full path.\n' +
-        'Click OK to enter the full path manually, or Cancel to use current directory.'
+      // Offer user better options for path handling
+      const userChoice = window.confirm(
+        `✅ Folder selected: "${folderName}"\n\n` +
+        '🎯 Choose how to proceed:\n\n' +
+        'OK = Enter full absolute path manually\n' +
+        'Cancel = Use relative path (./' + folderName + ')\n\n' +
+        '💡 Tip: Relative path works if the folder is in your current directory'
       );
       
-      if (shouldUseFullPath) {
-        return promptForDirectory();
+      if (userChoice) {
+        // User wants to enter full path manually
+        const fullPath = prompt(
+          `Enter the full path to "${folderName}":\n\n` +
+          'Examples:\n' +
+          `• macOS: /Users/username/path/to/${folderName}\n` +
+          `• Windows: C:\\Users\\username\\path\\to\\${folderName}\n` +
+          `• Linux: /home/username/path/to/${folderName}`
+        );
+        return fullPath;
       } else {
-        // Use current directory + folder name as fallback
+        // Use relative path
         return `./${folderName}`;
       }
     } else {
