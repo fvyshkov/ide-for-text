@@ -9,7 +9,23 @@ Make sure you have the following installed:
 
 ## Quick Start
 
-### Option 1: Use the startup script (macOS/Linux)
+### Option 1: Use the project manager (Recommended)
+
+```bash
+# Start everything
+./manage.sh start
+
+# Check status
+./manage.sh status
+
+# Stop everything
+./manage.sh stop
+
+# View logs
+./manage.sh logs
+```
+
+### Option 2: Use the startup script (macOS/Linux)
 
 ```bash
 ./start.sh
@@ -17,7 +33,7 @@ Make sure you have the following installed:
 
 This will automatically install dependencies and start both servers.
 
-### Option 2: Manual setup
+### Option 3: Manual setup
 
 #### 1. Setup Backend
 

@@ -29,6 +29,10 @@ ide-for-text/
 │   ├── public/
 │   ├── package.json
 │   └── tsconfig.json
+├── manage.sh         # Universal project manager (start/stop/status/logs)
+├── run-backend.sh    # Individual backend starter
+├── run-frontend.sh   # Individual frontend starter
+├── start.sh          # Legacy combined starter
 └── README.md
 ```
 
@@ -36,7 +40,31 @@ ide-for-text/
 
 ### Quick Start
 
-Use the provided startup scripts from the project root:
+Use the universal project manager script:
+
+```bash
+# Start everything (backend + frontend)
+./manage.sh start
+
+# Or simply (start is default)
+./manage.sh
+
+# Stop everything
+./manage.sh stop
+
+# Restart everything
+./manage.sh restart
+
+# Check status
+./manage.sh status
+
+# View logs
+./manage.sh logs
+```
+
+### Alternative: Individual Scripts
+
+You can also start services separately:
 
 ```bash
 # Start backend (in terminal 1)
@@ -88,13 +116,14 @@ Use the provided startup scripts from the project root:
 
 ## Usage
 
-1. Start both backend and frontend servers
+1. Start the application: `./manage.sh start`
 2. Open `http://localhost:3000` in your browser
-3. Click "Open Directory" and enter a local directory path
+3. Click "Open Directory" and enter a local directory path (try `./test-directory`)
 4. Browse the file tree on the left panel
 5. Click on any text file to open it in the editor
 6. Make changes - they'll be automatically saved to disk
 7. Use "Refresh" to reload the file tree if files change externally
+8. Stop the application: `./manage.sh stop`
 
 ## API Endpoints
 
