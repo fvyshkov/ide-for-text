@@ -1,0 +1,91 @@
+.resizable-splitter {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.resizable-panel {
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.left-panel {
+  min-width: 200px;
+  max-width: 600px;
+  flex-shrink: 0;
+}
+
+.right-panel {
+  flex: 1;
+  min-width: 300px;
+}
+
+.splitter-handle {
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+/* Light theme */
+[data-theme="light"] .splitter-handle {
+  background-color: #e0e0e0;
+}
+
+[data-theme="light"] .splitter-handle:hover {
+  background-color: #d0d0d0;
+}
+
+[data-theme="light"] .splitter-handle.dragging {
+  background-color: #007acc;
+}
+
+/* Dark theme */
+[data-theme="dark"] .splitter-handle {
+  background-color: #3c3c3c;
+}
+
+[data-theme="dark"] .splitter-handle:hover {
+  background-color: #4a4a4a;
+}
+
+[data-theme="dark"] .splitter-handle.dragging {
+  background-color: #007acc;
+}
+
+.splitter-line {
+  width: 1px;
+  height: 20px;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+/* Light theme */
+[data-theme="light"] .splitter-line {
+  background-color: #999;
+}
+
+/* Dark theme */
+[data-theme="dark"] .splitter-line {
+  background-color: #666;
+}
+
+.splitter-handle:hover .splitter-line {
+  opacity: 0.8;
+}
+
+.splitter-handle.dragging .splitter-line {
+  opacity: 0;
+}
+
+/* Prevent text selection during drag */
+.resizable-splitter.dragging {
+  user-select: none;
+}

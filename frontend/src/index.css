@@ -9,9 +9,20 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Light theme body */
+body.theme-light {
+  background-color: #ffffff;
+  color: #333333;
+}
+
+/* Dark theme body */
+body.theme-dark {
   background-color: #1e1e1e;
   color: #cccccc;
-  overflow: hidden;
 }
 
 html, body, #root {
@@ -30,16 +41,31 @@ code {
   width: 12px;
 }
 
-::-webkit-scrollbar-track {
+/* Light theme scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f3f4;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #dadce0;
+  border-radius: 6px;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #bdc1c6;
+}
+
+/* Dark theme scrollbar */
+[data-theme="dark"] ::-webkit-scrollbar-track {
   background: #2d2d2d;
 }
 
-::-webkit-scrollbar-thumb {
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
   background: #424242;
   border-radius: 6px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: #555555;
 }
 
@@ -50,10 +76,20 @@ button:focus-visible {
 }
 
 /* Selection styles */
-::selection {
+/* Light theme selection */
+[data-theme="light"] ::selection {
+  background-color: #b3d4fc;
+}
+
+[data-theme="light"] ::-moz-selection {
+  background-color: #b3d4fc;
+}
+
+/* Dark theme selection */
+[data-theme="dark"] ::selection {
   background-color: #264f78;
 }
 
-::-moz-selection {
+[data-theme="dark"] ::-moz-selection {
   background-color: #264f78;
 }

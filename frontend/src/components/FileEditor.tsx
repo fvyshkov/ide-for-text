@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { FileContent } from '../types';
+import { useTheme } from '../contexts/ThemeContext';
 import './FileEditor.css';
 
 interface FileEditorProps {
@@ -10,6 +11,7 @@ interface FileEditorProps {
 }
 
 const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, isLoading }) => {
+  const { theme } = useTheme();
   const editorRef = useRef<any>(null);
 
   // Get file language based on extension
@@ -98,6 +100,7 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
 
   const fileName = fileContent.path.split('/').pop() || '';
   const language = getLanguage(fileName);
+  const editorTheme = theme === 'light' ? 'light' : 'vs-dark';
 
   return (
     <div className="file-editor">
@@ -114,7 +117,7 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
           value={fileContent.content}
           onMount={handleEditorDidMount}
           onChange={handleEditorChange}
-          theme="vs-dark"
+          theme={editorTheme}
           options={{
             minimap: { enabled: true },
             fontSize: 14,

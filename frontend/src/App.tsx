@@ -2,11 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import FileTree from './components/FileTree';
 import FileEditor from './components/FileEditor';
+import ResizableSplitter from './components/ResizableSplitter';
 import { FileTreeItem, FileContent } from './types';
+import { useTheme } from './contexts/ThemeContext';
+import { pickDirectoryEnhanced } from './utils/fileSystemAccess';
+import { FaSun, FaMoon, FaFolder } from 'react-icons/fa';
 
 const API_BASE_URL = 'http://localhost:8001';
 
 function App() {
+  const { theme, toggleTheme } = useTheme();
   const [fileTree, setFileTree] = useState<FileTreeItem[]>([]);
   const [rootPath, setRootPath] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -55,13 +60,11 @@ function App() {
   }, [selectedFile, rootPath]);
 
   const openDirectory = async () => {
-    // For now, we'll use a file input to select directory
-    // In production, you might want to use Electron or a different approach
-    const directoryPath = prompt('Enter directory path:');
-    if (!directoryPath) return;
-
-    setIsLoading(true);
     try {
+      const directoryPath = await pickDirectoryEnhanced();
+      if (!directoryPath) return; // User cancelled
+
+      setIsLoading(true);
       const response = await fetch(`${API_BASE_URL}/api/open-directory`, {
         method: 'POST',
         headers: {
@@ -174,41 +177,89 @@ function App() {
     }
   };
 
+  const leftPanel = (
+    <div className="left-panel">
+      <div className="file-tree-header">
+        <button 
+          className="open-directory-btn"
+          onClick={openDirectory} 
+          disabled={isLoading}
+          title="Open Directory"
+        >
+          <FaFolder />
+          <span>Open Directory</span>
+        </button>
+        <button 
+          className="refresh-btn icon-only"
+          onClick={refreshFileTree} 
+          disabled={isLoading || !rootPath}
+          title="Refresh"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z" />
+          </svg>
+        </button>
+      </div>
+      
+      <FileTree
+        items={fileTree}
+        onFileSelect={handleFileSelect}
+        selectedFile={selectedFile}
+      />
+    </div>
+  );
+
+  const rightPanel = (
+    <div className="right-panel">
+      <FileEditor
+        fileContent={fileContent}
+        onContentChange={handleFileContentChange}
+        isLoading={isLoading}
+      />
+    </div>
+  );
+
   return (
     <div className="App">
       <div className="app-header">
-        <h1>Text IDE</h1>
-        <div className="header-info">
-          {rootPath && <span>Root: {rootPath}</span>}
-          {selectedFile && <span>Selected: {selectedFile}</span>}
+        <div className="header-left">
+          <h1>Text IDE</h1>
+          {rootPath && (
+            <div className="current-directory">
+              <span className="directory-label">Directory:</span>
+              <span className="directory-path" title={rootPath}>{rootPath}</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="header-right">
+          {selectedFile && (
+            <div className="selected-file">
+              <span className="file-label">File:</span>
+              <span className="file-path" title={selectedFile}>
+                {selectedFile.split('/').pop()}
+              </span>
+            </div>
+          )}
+          
+          <button 
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} theme`}
+          >
+            {theme === 'light' ? <FaMoon /> : <FaSun />}
+          </button>
         </div>
       </div>
       
       <div className="app-content">
-        <div className="left-panel">
-          <div className="file-tree-header">
-            <button onClick={openDirectory} disabled={isLoading}>
-              Open Directory
-            </button>
-            <button onClick={refreshFileTree} disabled={isLoading || !rootPath}>
-              Refresh
-            </button>
-          </div>
-          
-          <FileTree
-            items={fileTree}
-            onFileSelect={handleFileSelect}
-            selectedFile={selectedFile}
-          />
-        </div>
-        
-        <div className="right-panel">
-          <FileEditor
-            fileContent={fileContent}
-            onContentChange={handleFileContentChange}
-            isLoading={isLoading}
-          />
-        </div>
+        <ResizableSplitter
+          leftPanel={leftPanel}
+          rightPanel={rightPanel}
+          defaultLeftWidth={300}
+          minLeftWidth={200}
+          maxLeftWidth={600}
+        />
       </div>
     </div>
   );

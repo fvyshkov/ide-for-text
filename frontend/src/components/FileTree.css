@@ -3,6 +3,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 5px 0;
+  transition: background-color 0.3s ease;
 }
 
 .file-tree.empty {
@@ -10,8 +11,17 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #a0a0a0;
   padding: 20px;
+}
+
+/* Light theme empty state */
+[data-theme="light"] .file-tree.empty {
+  color: #6c757d;
+}
+
+/* Dark theme empty state */
+[data-theme="dark"] .file-tree.empty {
+  color: #a0a0a0;
 }
 
 .file-tree.empty p {
@@ -33,16 +43,33 @@
   overflow: hidden;
 }
 
-.tree-node-content:hover {
+/* Light theme hover */
+[data-theme="light"] .tree-node-content:hover {
+  background-color: #f8f9fa;
+}
+
+/* Dark theme hover */
+[data-theme="dark"] .tree-node-content:hover {
   background-color: #2a2d2e;
 }
 
-.tree-node-content.selected {
+/* Light theme selected */
+[data-theme="light"] .tree-node-content.selected {
+  background-color: #007acc;
+  color: #ffffff;
+}
+
+[data-theme="light"] .tree-node-content.selected:hover {
+  background-color: #0056b3;
+}
+
+/* Dark theme selected */
+[data-theme="dark"] .tree-node-content.selected {
   background-color: #094771;
   color: #ffffff;
 }
 
-.tree-node-content.selected:hover {
+[data-theme="dark"] .tree-node-content.selected:hover {
   background-color: #0e5a87;
 }
 
@@ -61,11 +88,29 @@
   width: 16px;
   height: 16px;
   font-size: 10px;
+}
+
+/* Light theme chevron */
+[data-theme="light"] .tree-node-chevron {
+  color: #6c757d;
+}
+
+/* Dark theme chevron */
+[data-theme="dark"] .tree-node-chevron {
   color: #cccccc;
 }
 
 .tree-node-icon svg {
   font-size: 14px;
+}
+
+/* Light theme icons */
+[data-theme="light"] .tree-node-icon svg {
+  color: #6c757d;
+}
+
+/* Dark theme icons */
+[data-theme="dark"] .tree-node-icon svg {
   color: #cccccc;
 }
 

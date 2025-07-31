@@ -2,6 +2,16 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  transition: background-color 0.3s ease;
+}
+
+/* Light theme */
+[data-theme="light"] .file-editor {
+  background-color: #ffffff;
+}
+
+/* Dark theme */
+[data-theme="dark"] .file-editor {
   background-color: #1e1e1e;
 }
 
@@ -11,21 +21,48 @@
 }
 
 .loading-spinner {
-  color: #cccccc;
   font-size: 1.1rem;
+}
+
+/* Light theme spinner */
+[data-theme="light"] .loading-spinner {
+  color: #495057;
+}
+
+/* Dark theme spinner */
+[data-theme="dark"] .loading-spinner {
+  color: #cccccc;
 }
 
 .file-editor.empty {
   justify-content: center;
   align-items: center;
   text-align: center;
+}
+
+/* Light theme empty state */
+[data-theme="light"] .file-editor.empty {
+  color: #6c757d;
+}
+
+/* Dark theme empty state */
+[data-theme="dark"] .file-editor.empty {
   color: #a0a0a0;
 }
 
 .empty-state h3 {
   margin: 0 0 10px 0;
-  color: #cccccc;
   font-weight: normal;
+}
+
+/* Light theme empty h3 */
+[data-theme="light"] .empty-state h3 {
+  color: #495057;
+}
+
+/* Dark theme empty h3 */
+[data-theme="dark"] .empty-state h3 {
+  color: #cccccc;
 }
 
 .empty-state p {
@@ -37,13 +74,31 @@
   justify-content: center;
   align-items: center;
   text-align: center;
+}
+
+/* Light theme binary */
+[data-theme="light"] .file-editor.binary {
+  color: #6c757d;
+}
+
+/* Dark theme binary */
+[data-theme="dark"] .file-editor.binary {
   color: #a0a0a0;
 }
 
 .binary-file-message h3 {
   margin: 0 0 10px 0;
-  color: #cccccc;
   font-weight: normal;
+}
+
+/* Light theme binary h3 */
+[data-theme="light"] .binary-file-message h3 {
+  color: #495057;
+}
+
+/* Dark theme binary h3 */
+[data-theme="dark"] .binary-file-message h3 {
+  color: #cccccc;
 }
 
 .binary-file-message p {
@@ -55,25 +110,55 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 15px;
-  background-color: #2d2d30;
-  border-bottom: 1px solid #3c3c3c;
+  border-bottom: 1px solid;
   min-height: 35px;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Light theme header */
+[data-theme="light"] .file-editor-header {
+  background-color: #f8f9fa;
+  border-bottom-color: #e9ecef;
+}
+
+/* Dark theme header */
+[data-theme="dark"] .file-editor-header {
+  background-color: #2d2d30;
+  border-bottom-color: #3c3c3c;
 }
 
 .file-name {
   font-weight: 600;
-  color: #ffffff;
   font-size: 0.95rem;
+}
+
+/* Light theme file name */
+[data-theme="light"] .file-name {
+  color: #2c3e50;
+}
+
+/* Dark theme file name */
+[data-theme="dark"] .file-name {
+  color: #ffffff;
 }
 
 .file-path {
   font-size: 0.8rem;
-  color: #a0a0a0;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   max-width: 400px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Light theme file path */
+[data-theme="light"] .file-path {
+  color: #6c757d;
+}
+
+/* Dark theme file path */
+[data-theme="dark"] .file-path {
+  color: #a0a0a0;
 }
 
 .editor-container {

@@ -2,9 +2,20 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
+  font-family: 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Light theme (default) */
+[data-theme="light"] .App {
+  background-color: #ffffff;
+  color: #333333;
+}
+
+/* Dark theme */
+[data-theme="dark"] .App {
   background-color: #1e1e1e;
   color: #cccccc;
-  font-family: 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
 }
 
 .app-header {
@@ -12,85 +23,328 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 20px;
+  min-height: 60px;
+  border-bottom: 1px solid;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Light theme header */
+[data-theme="light"] .app-header {
+  background-color: #f8f9fa;
+  border-bottom-color: #e9ecef;
+}
+
+/* Dark theme header */
+[data-theme="dark"] .app-header {
   background-color: #252525;
-  border-bottom: 1px solid #3c3c3c;
-  min-height: 50px;
+  border-bottom-color: #3c3c3c;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .app-header h1 {
   margin: 0;
   font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* Light theme h1 */
+[data-theme="light"] .app-header h1 {
+  color: #2c3e50;
+}
+
+/* Dark theme h1 */
+[data-theme="dark"] .app-header h1 {
   color: #ffffff;
 }
 
-.header-info {
+.current-directory,
+.selected-file {
   display: flex;
-  gap: 20px;
+  align-items: center;
+  gap: 8px;
   font-size: 0.9rem;
+  max-width: 400px;
+}
+
+.directory-label,
+.file-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Light theme labels */
+[data-theme="light"] .directory-label,
+[data-theme="light"] .file-label {
+  color: #495057;
+}
+
+/* Dark theme labels */
+[data-theme="dark"] .directory-label,
+[data-theme="dark"] .file-label {
   color: #a0a0a0;
 }
 
-.header-info span {
-  max-width: 300px;
+.directory-path,
+.file-path {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* Light theme paths */
+[data-theme="light"] .directory-path,
+[data-theme="light"] .file-path {
+  background-color: #e9ecef;
+  color: #495057;
+}
+
+[data-theme="light"] .directory-path:hover,
+[data-theme="light"] .file-path:hover {
+  background-color: #dee2e6;
+}
+
+/* Dark theme paths */
+[data-theme="dark"] .directory-path,
+[data-theme="dark"] .file-path {
+  background-color: #3c3c3c;
+  color: #cccccc;
+}
+
+[data-theme="dark"] .directory-path:hover,
+[data-theme="dark"] .file-path:hover {
+  background-color: #4a4a4a;
+}
+
+.theme-toggle-btn {
+  background: none;
+  border: 1px solid;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+  min-width: 36px;
+  height: 36px;
+}
+
+/* Light theme toggle button */
+[data-theme="light"] .theme-toggle-btn {
+  border-color: #dee2e6;
+  color: #495057;
+  background-color: #ffffff;
+}
+
+[data-theme="light"] .theme-toggle-btn:hover {
+  border-color: #007acc;
+  color: #007acc;
+  background-color: #f8f9fa;
+}
+
+/* Dark theme toggle button */
+[data-theme="dark"] .theme-toggle-btn {
+  border-color: #4a4a4a;
+  color: #cccccc;
+  background-color: #2d2d30;
+}
+
+[data-theme="dark"] .theme-toggle-btn:hover {
+  border-color: #007acc;
+  color: #007acc;
+  background-color: #3c3c3c;
 }
 
 .app-content {
   flex: 1;
-  display: flex;
-  height: calc(100vh - 70px);
+  height: calc(100vh - 80px);
   overflow: hidden;
 }
 
 .left-panel {
-  width: 300px;
-  min-width: 200px;
-  max-width: 500px;
-  background-color: #252525;
-  border-right: 1px solid #3c3c3c;
   display: flex;
   flex-direction: column;
-  resize: horizontal;
+  height: 100%;
   overflow: hidden;
+  border-right: 1px solid;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Light theme left panel */
+[data-theme="light"] .left-panel {
+  background-color: #f8f9fa;
+  border-right-color: #e9ecef;
+}
+
+/* Dark theme left panel */
+[data-theme="dark"] .left-panel {
+  background-color: #252525;
+  border-right-color: #3c3c3c;
 }
 
 .file-tree-header {
-  padding: 10px;
-  border-bottom: 1px solid #3c3c3c;
+  padding: 12px;
+  border-bottom: 1px solid;
   display: flex;
   gap: 8px;
+  transition: border-color 0.3s ease;
 }
 
-.file-tree-header button {
+/* Light theme header border */
+[data-theme="light"] .file-tree-header {
+  border-bottom-color: #e9ecef;
+}
+
+/* Dark theme header border */
+[data-theme="dark"] .file-tree-header {
+  border-bottom-color: #3c3c3c;
+}
+
+.open-directory-btn {
   flex: 1;
-  padding: 8px 12px;
-  background-color: #007acc;
-  color: white;
-  border: none;
-  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.9rem;
-  transition: background-color 0.2s;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  justify-content: center;
 }
 
-.file-tree-header button:hover:not(:disabled) {
+/* Light theme open directory button */
+[data-theme="light"] .open-directory-btn {
+  background-color: #007acc;
+  color: white;
+  border-color: #007acc;
+}
+
+[data-theme="light"] .open-directory-btn:hover:not(:disabled) {
+  background-color: #0056b3;
+  border-color: #0056b3;
+}
+
+[data-theme="light"] .open-directory-btn:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+  border-color: #dee2e6;
+  cursor: not-allowed;
+}
+
+/* Dark theme open directory button */
+[data-theme="dark"] .open-directory-btn {
+  background-color: #007acc;
+  color: white;
+  border-color: #007acc;
+}
+
+[data-theme="dark"] .open-directory-btn:hover:not(:disabled) {
   background-color: #106ebe;
+  border-color: #106ebe;
 }
 
-.file-tree-header button:disabled {
+[data-theme="dark"] .open-directory-btn:disabled {
   background-color: #4a4a4a;
   color: #a0a0a0;
+  border-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.refresh-btn {
+  padding: 10px;
+  border: 1px solid;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  height: 40px;
+}
+
+.refresh-btn.icon-only svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Light theme refresh button */
+[data-theme="light"] .refresh-btn {
+  background-color: #ffffff;
+  color: #495057;
+  border-color: #dee2e6;
+}
+
+[data-theme="light"] .refresh-btn:hover:not(:disabled) {
+  background-color: #f8f9fa;
+  color: #007acc;
+  border-color: #007acc;
+}
+
+[data-theme="light"] .refresh-btn:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+  border-color: #dee2e6;
+  cursor: not-allowed;
+}
+
+/* Dark theme refresh button */
+[data-theme="dark"] .refresh-btn {
+  background-color: #2d2d30;
+  color: #cccccc;
+  border-color: #4a4a4a;
+}
+
+[data-theme="dark"] .refresh-btn:hover:not(:disabled) {
+  background-color: #3c3c3c;
+  color: #007acc;
+  border-color: #007acc;
+}
+
+[data-theme="dark"] .refresh-btn:disabled {
+  background-color: #4a4a4a;
+  color: #a0a0a0;
+  border-color: #6c757d;
   cursor: not-allowed;
 }
 
 .right-panel {
-  flex: 1;
-  background-color: #1e1e1e;
   display: flex;
   flex-direction: column;
+  height: 100%;
   overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+
+/* Light theme right panel */
+[data-theme="light"] .right-panel {
+  background-color: #ffffff;
+}
+
+/* Dark theme right panel */
+[data-theme="dark"] .right-panel {
+  background-color: #1e1e1e;
 }
 
 /* Responsive design */
