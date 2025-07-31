@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { FileContent } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
@@ -133,7 +133,7 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
             trimAutoWhitespace: true,
             renderLineHighlight: 'line',
             selectionHighlight: true,
-            occurrencesHighlight: true,
+            occurrencesHighlight: 'singleFile',
             codeLens: false,
             folding: true,
             foldingHighlight: true,

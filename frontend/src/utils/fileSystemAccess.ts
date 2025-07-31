@@ -112,7 +112,7 @@ export const pickDirectoryEnhanced = async (): Promise<string | null> => {
       
       // We could also try to resolve relative path, but for now
       // let's use a different approach - ask user to confirm or enter full path
-      const shouldUseFullPath = confirm(
+      const shouldUseFullPath = window.confirm(
         `Selected folder: "${folderName}"\n\n` +
         'Due to browser security restrictions, we need the full path.\n' +
         'Click OK to enter the full path manually, or Cancel to use current directory.'
