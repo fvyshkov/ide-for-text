@@ -180,9 +180,10 @@
   font-size: 0.9rem;
   background-color: var(--chat-textarea-bg);
   color: var(--chat-textarea-color);
-  min-height: 20px;
-  max-height: 120px;
-  transition: border-color 0.2s ease;
+  min-height: 36px;
+  line-height: 20px;
+  overflow-y: auto;
+  transition: border-color 0.2s ease, height 0.2s ease;
 }
 
 .chat-textarea:focus {

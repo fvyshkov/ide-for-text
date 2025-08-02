@@ -413,12 +413,30 @@
   cursor: not-allowed;
 }
 
+.center-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+
 .right-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
   transition: background-color 0.3s ease;
+}
+
+/* Light theme center panel */
+[data-theme="light"] .center-panel {
+  background-color: #ffffff;
+}
+
+/* Dark theme center panel */
+[data-theme="dark"] .center-panel {
+  background-color: #1e1e1e;
 }
 
 /* Light theme right panel */

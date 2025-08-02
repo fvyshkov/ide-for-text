@@ -29,6 +29,24 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-resize textarea
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      // Reset height to calculate new height
+      textarea.style.height = 'auto';
+      
+      // Calculate line height (approximate)
+      const lineHeight = 20;
+      const maxLines = 10;
+      const maxHeight = lineHeight * maxLines;
+      
+      // Set new height based on scroll height, but cap at max
+      const newHeight = Math.min(textarea.scrollHeight, maxHeight);
+      textarea.style.height = `${newHeight}px`;
+    }
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -36,6 +54,11 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-resize textarea when input changes
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue]);
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -50,6 +73,13 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
+    
+    // Reset textarea height after sending
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    }, 0);
 
     // Simulate AI response (replace with actual API call)
     setTimeout(() => {
@@ -144,7 +174,11 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
           <textarea
             ref={textareaRef}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              // Trigger resize on next tick to ensure state is updated
+              setTimeout(adjustTextareaHeight, 0);
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Ask me about your code, project, or anything else..."
             className="chat-textarea"
