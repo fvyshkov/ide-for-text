@@ -1,0 +1,107 @@
+.triple-splitter {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--background-color);
+}
+
+.triple-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.triple-panel.left-panel {
+  border-right: 1px solid var(--border-color);
+  background-color: var(--panel-background);
+}
+
+.triple-panel.center-panel {
+  background-color: var(--editor-background);
+  flex: 1;
+  min-width: 200px;
+}
+
+.triple-panel.right-panel {
+  border-left: 1px solid var(--border-color);
+  background-color: var(--panel-background);
+}
+
+.splitter-handle {
+  width: 4px;
+  cursor: col-resize;
+  background-color: var(--border-color);
+  position: relative;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+.splitter-handle:hover {
+  background-color: var(--splitter-hover-color);
+}
+
+.splitter-handle.dragging {
+  background-color: var(--splitter-active-color);
+}
+
+.splitter-line {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1px;
+  height: 30px;
+  background-color: var(--splitter-line-color);
+  border-radius: 0.5px;
+}
+
+/* Light theme variables */
+[data-theme="light"] .triple-splitter {
+  --background-color: #ffffff;
+  --panel-background: #f8f9fa;
+  --editor-background: #ffffff;
+  --border-color: #e9ecef;
+  --splitter-hover-color: #007acc;
+  --splitter-active-color: #005a9e;
+  --splitter-line-color: #666666;
+}
+
+/* Dark theme variables */
+[data-theme="dark"] .triple-splitter {
+  --background-color: #1e1e1e;
+  --panel-background: #252525;
+  --editor-background: #1e1e1e;
+  --border-color: #3c3c3c;
+  --splitter-hover-color: #007acc;
+  --splitter-active-color: #1177bb;
+  --splitter-line-color: #cccccc;
+}
+
+/* Ensure panels don't overlap */
+.triple-panel {
+  min-width: 0;
+}
+
+.triple-panel.left-panel,
+.triple-panel.right-panel {
+  flex-shrink: 0;
+}
+
+/* Responsive behavior */
+@media (max-width: 1200px) {
+  .triple-panel.right-panel {
+    min-width: 250px;
+  }
+}
+
+@media (max-width: 900px) {
+  .triple-panel.left-panel {
+    min-width: 150px;
+  }
+  
+  .triple-panel.right-panel {
+    min-width: 200px;
+  }
+}

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import FileTree from './components/FileTree';
 import FileEditor from './components/FileEditor';
-import ResizableSplitter from './components/ResizableSplitter';
+import TripleSplitter from './components/TripleSplitter';
+import AIChat from './components/AIChat';
 import { FileTreeItem, FileContent } from './types';
 import { useTheme } from './contexts/ThemeContext';
 // Native directory picker functionality
@@ -217,6 +218,7 @@ function App() {
     }
   };
 
+  // Left panel: File tree
   const leftPanel = (
     <div className="left-panel">
       <div className="file-tree-header">
@@ -248,12 +250,23 @@ function App() {
     </div>
   );
 
-  const rightPanel = (
-    <div className="right-panel">
+  // Center panel: File editor
+  const centerPanel = (
+    <div className="center-panel">
       <FileEditor
         fileContent={fileContent}
         onContentChange={handleFileContentChange}
         isLoading={isLoading}
+      />
+    </div>
+  );
+
+  // Right panel: AI Chat
+  const rightPanel = (
+    <div className="right-panel">
+      <AIChat 
+        currentFile={selectedFile || undefined}
+        projectPath={rootPath || undefined}
       />
     </div>
   );
@@ -292,12 +305,16 @@ function App() {
       </div>
       
       <div className="app-content">
-        <ResizableSplitter
+        <TripleSplitter
           leftPanel={leftPanel}
+          centerPanel={centerPanel}
           rightPanel={rightPanel}
           defaultLeftWidth={300}
+          defaultRightWidth={400}
           minLeftWidth={200}
           maxLeftWidth={600}
+          minRightWidth={300}
+          maxRightWidth={800}
         />
       </div>
     </div>
