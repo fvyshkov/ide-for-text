@@ -5,7 +5,7 @@ import FileEditor from './components/FileEditor';
 import ResizableSplitter from './components/ResizableSplitter';
 import { FileTreeItem, FileContent } from './types';
 import { useTheme } from './contexts/ThemeContext';
-import { pickDirectorySimple } from './utils/fileSystemAccess';
+// Removed complex file system access, using simple prompt instead
 import { FaSun, FaMoon, FaFolder } from 'react-icons/fa';
 
 const API_BASE_URL = 'http://localhost:8001';
@@ -59,17 +59,29 @@ function App() {
     };
   }, [selectedFile, rootPath]);
 
-  const openDirectory = async () => {
-    let directoryPath = '';
-    try {
-      const directoryName = await pickDirectorySimple();
-      if (!directoryName) return; // User cancelled
+  const openDirectory = async (path?: string) => {
+    let directoryPath = path;
+    
+    if (!directoryPath) {
+      // Show quick options
+      directoryPath = prompt(
+        '📁 Выбери папку:\n\n' +
+        '1️⃣ Быстрые варианты:\n' +
+        '• ./test-directory (тестовые файлы)\n' +
+        '• . (текущая папка)\n' +
+        '• .. (родительская папка)\n\n' +
+        '2️⃣ Или введи свой путь:\n' +
+        '• /Users/username/Documents\n' +
+        '• ~/Desktop\n' +
+        '• ./my-project'
+      );
+    }
+    
+    if (!directoryPath) return; // User cancelled
 
-      setIsLoading(true);
-      
-      // Try relative path first
-      directoryPath = `./${directoryName}`;
-      
+    setIsLoading(true);
+    
+    try {
       const response = await fetch(`${API_BASE_URL}/api/open-directory`, {
         method: 'POST',
         headers: {
@@ -87,7 +99,7 @@ function App() {
       setRootPath(data.root_path);
     } catch (error) {
       console.error('Error opening directory:', error);
-      alert(`Error opening directory "${directoryPath}". Make sure the folder exists in the current directory or try again.`);
+      alert(`Ошибка открытия папки "${directoryPath}". Проверь что папка существует.`);
     } finally {
       setIsLoading(false);
     }
@@ -185,15 +197,32 @@ function App() {
   const leftPanel = (
     <div className="left-panel">
       <div className="file-tree-header">
-        <button 
-          className="open-directory-btn"
-          onClick={openDirectory} 
-          disabled={isLoading}
-          title="Open Directory"
-        >
-          <FaFolder />
-          <span>Open Directory</span>
-        </button>
+        <div className="quick-folders">
+          <button 
+            className="quick-folder-btn"
+            onClick={() => openDirectory('./test-directory')} 
+            disabled={isLoading}
+            title="Open test directory"
+          >
+            📂 Test
+          </button>
+          <button 
+            className="quick-folder-btn"
+            onClick={() => openDirectory('.')} 
+            disabled={isLoading}
+            title="Open current directory"
+          >
+            📁 Current
+          </button>
+          <button 
+            className="open-directory-btn-small"
+            onClick={() => openDirectory()} 
+            disabled={isLoading}
+            title="Enter custom path"
+          >
+            ⌨️
+          </button>
+        </div>
         <button 
           className="refresh-btn icon-only"
           onClick={refreshFileTree} 

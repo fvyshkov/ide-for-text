@@ -204,8 +204,125 @@
   padding: 12px;
   border-bottom: 1px solid;
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   transition: border-color 0.3s ease;
+}
+
+.quick-folders {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.quick-folder-btn {
+  padding: 8px 10px;
+  border: 1px solid;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 60px;
+  justify-content: center;
+}
+
+/* Light theme quick folder button */
+[data-theme="light"] .quick-folder-btn {
+  background-color: #ffffff;
+  color: #495057;
+  border-color: #dee2e6;
+}
+
+[data-theme="light"] .quick-folder-btn:hover:not(:disabled) {
+  background-color: #f8f9fa;
+  color: #007acc;
+  border-color: #007acc;
+}
+
+[data-theme="light"] .quick-folder-btn:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+  border-color: #dee2e6;
+  cursor: not-allowed;
+}
+
+/* Dark theme quick folder button */
+[data-theme="dark"] .quick-folder-btn {
+  background-color: #2d2d30;
+  color: #cccccc;
+  border-color: #4a4a4a;
+}
+
+[data-theme="dark"] .quick-folder-btn:hover:not(:disabled) {
+  background-color: #3c3c3c;
+  color: #007acc;
+  border-color: #007acc;
+}
+
+[data-theme="dark"] .quick-folder-btn:disabled {
+  background-color: #4a4a4a;
+  color: #a0a0a0;
+  border-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.open-directory-btn-small {
+  padding: 8px;
+  border: 1px solid;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  min-width: 36px;
+  height: 36px;
+  font-size: 1rem;
+}
+
+/* Light theme open directory small button */
+[data-theme="light"] .open-directory-btn-small {
+  background-color: #ffffff;
+  color: #495057;
+  border-color: #dee2e6;
+}
+
+[data-theme="light"] .open-directory-btn-small:hover:not(:disabled) {
+  background-color: #f8f9fa;
+  color: #007acc;
+  border-color: #007acc;
+}
+
+[data-theme="light"] .open-directory-btn-small:disabled {
+  background-color: #e9ecef;
+  color: #6c757d;
+  border-color: #dee2e6;
+  cursor: not-allowed;
+}
+
+/* Dark theme open directory small button */
+[data-theme="dark"] .open-directory-btn-small {
+  background-color: #2d2d30;
+  color: #cccccc;
+  border-color: #4a4a4a;
+}
+
+[data-theme="dark"] .open-directory-btn-small:hover:not(:disabled) {
+  background-color: #3c3c3c;
+  color: #007acc;
+  border-color: #007acc;
+}
+
+[data-theme="dark"] .open-directory-btn-small:disabled {
+  background-color: #4a4a4a;
+  color: #a0a0a0;
+  border-color: #6c757d;
+  cursor: not-allowed;
 }
 
 /* Light theme header border */
