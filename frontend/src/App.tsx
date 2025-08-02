@@ -33,9 +33,18 @@ function App() {
       
       if (message.type === 'file_updated' && message.path === selectedFile) {
         // File was updated externally, refresh content
-        if (message.sender !== 'frontend') {
-          loadFileContent(message.path);
-        }
+        console.log('🔄 WebSocket file update:', {
+          path: message.path,
+          sender: message.sender,
+          senderType: typeof message.sender,
+          type: message.type,
+          willReload: message.sender !== 'frontend',
+          selectedFile: selectedFile
+        });
+        
+        // Only reload if external change (not from our frontend)
+        // Skip reload for now to avoid infinite loops
+        console.log('⚠️ Skipping WebSocket file reload to avoid loops');
       } else if (message.type === 'file_changed') {
         // File system change detected, might need to refresh tree
         if (message.path.startsWith(rootPath)) {
@@ -103,6 +112,9 @@ function App() {
       const data = await response.json();
       setFileTree(data.tree);
       setRootPath(data.root_path);
+      
+      // Save successfully loaded directory to localStorage
+      localStorage.setItem('ide-last-directory', data.root_path);
     } catch (error) {
       console.error('Error opening directory:', error);
       alert(`Error opening directory "${directoryPath}". Make sure the directory exists.`);
@@ -116,6 +128,31 @@ function App() {
     await loadDirectory(rootPath);
   };
 
+  // Auto-load directory on startup
+  useEffect(() => {
+    const initializeDirectory = async () => {
+      // Try to load last used directory from localStorage
+      const lastDirectory = localStorage.getItem('ide-last-directory');
+      const directoryToLoad = lastDirectory || '.'; // fallback to current directory
+      
+      try {
+        await loadDirectory(directoryToLoad);
+      } catch (error) {
+        console.warn('Failed to load directory:', directoryToLoad, error);
+        // Fallback to current directory if last directory failed
+        if (lastDirectory && lastDirectory !== '.') {
+          try {
+            await loadDirectory('.');
+          } catch (fallbackError) {
+            console.error('Failed to load current directory as fallback:', fallbackError);
+          }
+        }
+      }
+    };
+
+    initializeDirectory();
+  }, []); // Run only once on mount
+
   const loadFileContent = async (filePath: string) => {
     setIsLoading(true);
     try {
@@ -126,6 +163,7 @@ function App() {
       }
 
       const content: FileContent = await response.json();
+      // File loaded successfully
       setFileContent(content);
     } catch (error) {
       console.error('Error loading file content:', error);
@@ -142,6 +180,8 @@ function App() {
 
   const handleFileContentChange = async (newContent: string) => {
     if (!selectedFile) return;
+
+    // Saving to backend
 
     try {
       // Save to backend
@@ -160,8 +200,7 @@ function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      // Update local state
-      setFileContent(prev => prev ? { ...prev, content: newContent } : null);
+      // Don't update local state - let Monaco manage its own content
 
       // Notify WebSocket
       if (websocket && websocket.readyState === WebSocket.OPEN) {

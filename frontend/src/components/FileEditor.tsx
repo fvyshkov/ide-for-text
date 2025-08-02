@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { FileContent } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
@@ -13,6 +13,14 @@ interface FileEditorProps {
 const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, isLoading }) => {
   const { theme } = useTheme();
   const editorRef = useRef<any>(null);
+  const currentFilePathRef = useRef<string | null>(null);
+
+  // Simple file tracking for reference
+  useEffect(() => {
+    if (fileContent) {
+      currentFilePathRef.current = fileContent.path;
+    }
+  }, [fileContent?.path]);
 
   // Get file language based on extension
   const getLanguage = (fileName: string): string => {
@@ -59,6 +67,8 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
 
   const handleEditorDidMount = (editor: any) => {
     editorRef.current = editor;
+    // Monaco is created with correct defaultLanguage and defaultValue
+    // No need for manual setup
   };
 
   const handleEditorChange = (value: string | undefined) => {
@@ -102,6 +112,8 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
   const language = getLanguage(fileName);
   const editorTheme = theme === 'light' ? 'light' : 'vs-dark';
 
+  // Monaco Editor creation
+
   return (
     <div className="file-editor">
       <div className="file-editor-header">
@@ -111,10 +123,10 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
       
       <div className="editor-container">
         <Editor
+          key={`monaco-${fileContent.path}`}
           height="100%"
           defaultLanguage={language}
-          language={language}
-          value={fileContent.content}
+          defaultValue={fileContent.content || ''}
           onMount={handleEditorDidMount}
           onChange={handleEditorChange}
           theme={editorTheme}
