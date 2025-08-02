@@ -1,14 +1,24 @@
-# Text IDE+66111`1111111111111111111
-1
+# Text IDE
+
 A web-based text editor for local files built with FastAPI and React.
 
 ## Features
 
 - **File Tree**: Browse and open local directories
-- **Text Editor**: Edit text files with syntax highlighting
+- **Text Editor**: Edit text files with syntax highlighting  
+- **AI Chat Integration**: Advanced AI-powered data analysis and processing
 - **Real-time Sync**: Changes are automatically saved to disk
 - **WebSocket Support**: Real-time synchronization between app and file system
 - **Binary File Detection**: Identifies and handles binary files appropriately
+- **Theme Support**: Light and dark mode with user preference persistence
+- **Resizable Panels**: Flexible three-panel layout with adjustable splitters
+
+## 📚 Documentation
+
+For detailed technical documentation, architecture guides, and implementation details, see the **[Documentation](./docs/)** folder:
+
+- **[Prompt Processing Workflow](./docs/prompt-processing-workflow.md)** - Complete AI workflow documentation
+- **[Documentation Index](./docs/README.md)** - Full documentation overview
 
 ## Project Structure
 
@@ -22,13 +32,20 @@ ide-for-text/
 │   │   ├── components/
 │   │   │   ├── FileTree.tsx
 │   │   │   ├── FileEditor.tsx
+│   │   │   ├── AIChat.tsx
+│   │   │   ├── TripleSplitter.tsx
 │   │   │   └── *.css
+│   │   ├── contexts/
+│   │   │   └── ThemeContext.tsx
 │   │   ├── App.tsx
 │   │   ├── types.ts
 │   │   └── index.tsx
 │   ├── public/
 │   ├── package.json
 │   └── tsconfig.json
+├── docs/             # Technical documentation
+│   ├── README.md     # Documentation index
+│   └── prompt-processing-workflow.md  # AI workflow guide
 ├── manage.sh         # Universal project manager (start/stop/status/logs)
 ├── run-backend.sh    # Individual backend starter
 ├── run-frontend.sh   # Individual frontend starter

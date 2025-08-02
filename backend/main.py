@@ -1,9 +1,6 @@
 """
 FastAPI backend for text IDE
 Provides file system operations and WebSocket support for real-time file synchronization
-111
-111
-
 """
 import os
 import json
