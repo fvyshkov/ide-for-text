@@ -51,6 +51,8 @@
   display: flex;
   align-items: center;
   gap: 15px;
+  flex: 2;
+  min-width: 0;
 }
 
 .app-header h1 {
@@ -69,13 +71,21 @@
   color: #ffffff;
 }
 
-.current-directory,
+.current-directory {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  max-width: 800px;
+}
+
 .selected-file {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 0.9rem;
-  max-width: 400px;
+  flex: 1;
+  min-width: 0;
 }
 
 .directory-label,
@@ -106,6 +116,18 @@
   padding: 2px 6px;
   border-radius: 3px;
   cursor: pointer;
+}
+
+/* Show end of directory path (tail) when it doesn't fit */
+.directory-path {
+  direction: rtl;
+  text-align: left;
+}
+
+/* Show end of file path (tail) when it doesn't fit */
+.file-path {
+  direction: rtl;
+  text-align: left;
 }
 
 /* Light theme paths */

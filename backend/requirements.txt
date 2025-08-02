@@ -4,7 +4,3 @@ aiofiles==23.2.1
 python-multipart==0.0.6
 watchdog==3.0.0
 pydantic==2.5.0
-# 1ский ра11111111111
-1111123223
-123123123
-++

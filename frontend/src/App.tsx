@@ -276,7 +276,7 @@ function App() {
             <div className="selected-file">
               <span className="file-label">File:</span>
               <span className="file-path" title={selectedFile}>
-                {selectedFile.split('/').pop()}
+                {selectedFile}
               </span>
             </div>
           )}
