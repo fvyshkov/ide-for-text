@@ -1,4 +1,4 @@
-# Text IDE
+# Text IDE+
 
 A web-based text editor for local files built with FastAPI and React.
 

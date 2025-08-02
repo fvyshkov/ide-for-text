@@ -12,6 +12,10 @@ declare global {
   
   interface Window {
     selectedFiles?: FileList;
+    showDirectoryPicker?: (options?: {
+      mode?: 'read' | 'readwrite';
+      startIn?: string;
+    }) => Promise<any>;
   }
 }
 

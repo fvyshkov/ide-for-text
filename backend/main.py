@@ -17,6 +17,17 @@ import aiofiles
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+# For system folder picker
+import subprocess
+import platform
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+    HAS_TKINTER = True
+except ImportError:
+    HAS_TKINTER = False
+
 app = FastAPI(title="Text IDE Backend", version="1.0.0")
 
 # CORS middleware for frontend communication
@@ -217,6 +228,64 @@ async def write_file(request: WriteFileRequest):
         return {"success": True, "message": "File saved successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error writing file: {str(e)}")
+
+@app.post("/api/pick-directory")
+async def pick_directory():
+    """Open system folder picker dialog"""
+    try:
+        if platform.system() == "Darwin":  # macOS
+            # Use AppleScript for native macOS folder picker
+            applescript = '''
+            tell application "System Events"
+                activate
+            end tell
+            set selectedFolder to choose folder with prompt "Select Folder"
+            return POSIX path of selectedFolder
+            '''
+            
+            result = subprocess.run([
+                'osascript', '-e', applescript
+            ], capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                folder_path = result.stdout.strip()
+                if folder_path:
+                    return {"path": folder_path, "success": True}
+                else:
+                    return {"path": None, "success": False, "message": "User cancelled"}
+            elif result.returncode == 1:
+                # User cancelled
+                return {"path": None, "success": False, "message": "User cancelled"}
+            else:
+                raise Exception(f"AppleScript error: {result.stderr}")
+                
+        elif HAS_TKINTER:
+            # Use tkinter for other platforms
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            root.attributes('-topmost', True)  # Make dialog appear on top
+            
+            # Open folder picker dialog
+            folder_path = filedialog.askdirectory(
+                title="Select Folder",
+                initialdir=os.getcwd()
+            )
+            
+            # Clean up
+            root.destroy()
+            
+            if folder_path:
+                return {"path": folder_path, "success": True}
+            else:
+                # User cancelled
+                return {"path": None, "success": False, "message": "User cancelled"}
+        else:
+            raise HTTPException(status_code=501, detail="System folder picker not available")
+            
+    except subprocess.TimeoutExpired:
+        return {"path": None, "success": False, "message": "Dialog timeout"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error opening folder picker: {str(e)}")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
