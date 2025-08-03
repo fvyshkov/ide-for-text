@@ -21,7 +21,7 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
     if (fileContent) {
       currentFilePathRef.current = fileContent.path;
     }
-  }, [fileContent?.path]);
+  }, [fileContent]);
 
   // Get file language based on extension
   const getLanguage = (fileName: string): string => {

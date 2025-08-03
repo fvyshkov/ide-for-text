@@ -52,7 +52,7 @@ function App() {
   }, [selectedFile, rootPath]);
 
   // WebSocket connection with auto-reconnect
-  const { isConnected, sendMessage } = useWebSocket({
+  const { sendMessage } = useWebSocket({
     url: 'ws://localhost:8001/ws',
     onMessage: handleWebSocketMessage,
     reconnectInterval: 3000,
@@ -148,7 +148,7 @@ function App() {
     };
 
     initializeDirectory();
-  }, []); // Run only once on mount
+  }, [loadDirectory]); // Include loadDirectory in dependencies
 
   const loadFileContent = async (filePath: string) => {
     setIsLoading(true);
@@ -227,13 +227,15 @@ function App() {
   ), [fileContent, handleFileContentChange, isLoading, askAI]);
 
   // Left panel: File tree
-  const leftPanel = useMemo(() => (
-    <div className="left-panel">
+  const leftPanel = useMemo(() => {
+    // Bring openDirectory into scope
+    const handleOpenDirectory = openDirectory;
+    return (<div className="left-panel">
       <div className="file-tree-header">
         <div className="toolbar-buttons">
           <button 
             className="toolbar-btn"
-            onClick={openDirectory} 
+            onClick={handleOpenDirectory} 
             disabled={isLoading}
             title="Open folder"
           >
@@ -256,7 +258,8 @@ function App() {
         selectedFile={selectedFile}
       />
     </div>
-  ), [fileTree, handleFileSelect, selectedFile, isLoading, rootPath, openDirectory, refreshFileTree]);
+    );
+  }, [fileTree, handleFileSelect, selectedFile, isLoading, rootPath, refreshFileTree, openDirectory]);
 
   // Right panel: AI Chat
   const rightPanel = useMemo(() => (

@@ -75,7 +75,7 @@ export const useWebSocket = ({
         ws.close();
       }
     };
-  }, [connect]);
+  }, [connect, ws]);
 
   const sendMessage = useCallback((message: WebSocketMessage) => {
     if (ws && ws.readyState === WebSocket.OPEN) {

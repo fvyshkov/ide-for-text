@@ -196,7 +196,8 @@ async def open_directory(request: OpenDirectoryRequest):
         directory_path = os.path.abspath(os.path.join(os.getcwd(), directory_path))
     else:
         # Just path - treat as relative to project root
-        directory_path = os.path.abspath(os.path.join(os.getcwd(), directory_path))
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        directory_path = os.path.abspath(os.path.join(project_root, directory_path))
     
     print(f"Absolute path: {directory_path}")
     print(f"Current working directory: {os.getcwd()}")
