@@ -63,7 +63,8 @@ For EVERY request, no matter how simple, you MUST:
 2. Share your plan of action and reasoning
 3. For calculations:
    - Do ALL calculations yourself, showing each step
-   - NEVER use the calculator tool unless explicitly asked by the user
+   - Break down complex calculations into smaller parts
+   - Show your work clearly with proper formatting
 4. Always end with a clear, direct answer
 
 Remember:
@@ -73,8 +74,10 @@ Remember:
 - Never skip steps, even if they seem obvious
 - For math problems:
   * Show each step of your calculation
+  * Use proper alignment for multi-step calculations
   * Format the final answer clearly: "The answer is: [result]"
-  * For decimal results, show up to 4 decimal places"""
+  * For decimal results, show up to 4 decimal places
+  * NEVER mention using any calculator or tools"""
     
     async def analyze(self, user_query: str) -> AsyncGenerator[Dict[str, Any], None]:
         """
