@@ -264,6 +264,15 @@ async def write_file(request: WriteFileRequest):
         raise HTTPException(status_code=500, detail=f"Error writing file: {str(e)}")
 
 @app.post("/api/pick-directory")
+async def pick_directory(test_mode: bool = False):
+    """Open system folder picker dialog"""
+    if test_mode:
+        # In test mode, always return test-directory
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        test_dir = os.path.join(project_root, "test-directory")
+        return {"path": test_dir, "success": True}
+        
+    # Normal mode below
 async def pick_directory():
     """Open system folder picker dialog"""
     try:
