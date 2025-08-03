@@ -20,7 +20,8 @@ interface AIChatProps {
   projectPath?: string;
 }
 
-const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
+const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIChatProps>((props, ref) => {
+  const { currentFile, projectPath } = props;
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -66,18 +67,27 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
     adjustTextareaHeight();
   }, [inputValue]);
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+  // Expose askQuestion method through ref
+  React.useImperativeHandle(ref, () => ({
+    askQuestion: (question: string) => {
+      setInputValue(question);
+      setTimeout(() => handleSendMessage(question), 0);
+    }
+  }));
+
+  const handleSendMessage = async (manualInput?: string) => {
+    const messageText = manualInput || inputValue;
+    if (!messageText.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: inputValue.trim(),
+      content: messageText.trim(),
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const originalInput = inputValue.trim();
+    const originalInput = messageText.trim();
     setInputValue('');
     setIsLoading(true);
     
@@ -97,7 +107,8 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
         },
         body: JSON.stringify({
           query: originalInput,
-          file_paths: currentFile ? [currentFile] : undefined
+          file_paths: currentFile ? [currentFile] : undefined,
+          project_path: projectPath
         }),
       });
 
@@ -359,7 +370,7 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
             disabled={isLoading}
           />
           <button
-            onClick={handleSendMessage}
+            onClick={() => handleSendMessage()}
             disabled={!inputValue.trim() || isLoading}
             className="send-button"
             title="Send message (Enter)"
@@ -373,6 +384,6 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
       </div>
     </div>
   );
-};
+});
 
 export default AIChat;

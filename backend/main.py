@@ -62,6 +62,7 @@ class WriteFileRequest(BaseModel):
 class AIAnalysisRequest(BaseModel):
     query: str
     file_paths: Optional[List[str]] = None
+    project_path: Optional[str] = None
 
 class FileWatcher(FileSystemEventHandler):
     """File system watcher for detecting changes on disk"""
@@ -173,13 +174,39 @@ async def broadcast_to_websockets(message: Dict[str, Any]):
 async def root():
     return {"message": "Text IDE Backend API"}
 
+class OpenDirectoryRequest(BaseModel):
+    path: str
+
 @app.post("/api/open-directory")
-async def open_directory(request: dict):
+async def open_directory(request: OpenDirectoryRequest):
     """Open directory and return file tree"""
-    directory_path = request.get("path")
+    directory_path = request.path
     
-    if not directory_path or not os.path.exists(directory_path):
-        raise HTTPException(status_code=400, detail="Invalid directory path")
+    print(f"Opening directory: {directory_path}")
+    if not directory_path:
+        print("Error: Directory path is empty")
+        raise HTTPException(status_code=400, detail="Directory path is empty")
+    
+    # Handle paths
+    if directory_path.startswith('/'):
+        # Absolute path
+        directory_path = directory_path
+    elif directory_path.startswith('./') or directory_path.startswith('../'):
+        # Relative path from current directory
+        directory_path = os.path.abspath(os.path.join(os.getcwd(), directory_path))
+    else:
+        # Just path - treat as relative to project root
+        directory_path = os.path.abspath(os.path.join(os.getcwd(), directory_path))
+    
+    print(f"Absolute path: {directory_path}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Directory exists: {os.path.exists(directory_path)}")
+    print(f"Is directory: {os.path.isdir(directory_path)}")
+    print(f"Directory contents: {os.listdir(directory_path) if os.path.exists(directory_path) and os.path.isdir(directory_path) else 'N/A'}")
+    
+    if not os.path.exists(directory_path):
+        print(f"Error: Directory does not exist: {directory_path}")
+        raise HTTPException(status_code=400, detail=f"Directory does not exist: {directory_path}")
     
     if not os.path.isdir(directory_path):
         raise HTTPException(status_code=400, detail="Path is not a directory")
@@ -240,6 +267,7 @@ async def pick_directory():
     """Open system folder picker dialog"""
     try:
         if platform.system() == "Darwin":  # macOS
+            print("Using macOS folder picker")
             # Use AppleScript for native macOS folder picker
             applescript = '''
             tell application "System Events"
@@ -249,13 +277,21 @@ async def pick_directory():
             return POSIX path of selectedFolder
             '''
             
+            print("Running AppleScript...")
             result = subprocess.run([
                 'osascript', '-e', applescript
             ], capture_output=True, text=True, timeout=60)
+            print("AppleScript result:", result.returncode, result.stdout, result.stderr)
             
             if result.returncode == 0:
                 folder_path = result.stdout.strip()
                 if folder_path:
+                    # Unescape AppleScript path and convert to absolute path
+                    folder_path = folder_path.replace('\\ ', ' ')
+                    folder_path = os.path.abspath(folder_path)
+                    print(f"Selected folder path: {folder_path}")
+                    print(f"Path exists: {os.path.exists(folder_path)}")
+                    print(f"Is directory: {os.path.isdir(folder_path)}")
                     return {"path": folder_path, "success": True}
                 else:
                     return {"path": None, "success": False, "message": "User cancelled"}
@@ -304,7 +340,7 @@ async def analyze_with_ai(request: AIAnalysisRequest):
         
         async def generate_stream():
             """Generate streaming response"""
-            async for thought in agent.analyze(request.query):
+            async for thought in agent.analyze(request.query, request.project_path):
                 # Format as Server-Sent Events
                 data = json.dumps(thought)
                 yield f"data: {data}\n\n"

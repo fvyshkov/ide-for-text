@@ -8,9 +8,10 @@ interface FileEditorProps {
   fileContent: FileContent | null;
   onContentChange: (content: string) => void;
   isLoading: boolean;
+  onAskAI?: (question: string) => void;
 }
 
-const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, isLoading }) => {
+const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, isLoading, onAskAI }) => {
   const { theme } = useTheme();
   const editorRef = useRef<any>(null);
   const currentFilePathRef = useRef<string | null>(null);
@@ -96,12 +97,42 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
     );
   }
 
-  if (fileContent.is_binary) {
+  // Check if it's a data file (Excel, CSV)
+  const isDataFile = (fileName: string): boolean => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    return ['xlsx', 'xls', 'csv'].includes(extension || '');
+  };
+
+  if (fileContent.is_binary || isDataFile(fileContent.path)) {
+    const fileName = fileContent.path.split('/').pop() || '';
+    const isData = isDataFile(fileName);
+
     return (
       <div className="file-editor binary">
         <div className="binary-file-message">
-          <h3>Binary File</h3>
-          <p>This file cannot be displayed as text.</p>
+          <h3>{isData ? 'Data File' : 'Binary File'}</h3>
+          {isData ? (
+            <>
+              <p>This is a data file that can be analyzed using the AI Assistant.</p>
+              <p>Try asking the AI to:</p>
+              <ul>
+                <li onClick={() => onAskAI?.(`Show a summary of the data in ${fileName}`)}>
+                  Show a summary of the data
+                </li>
+                <li onClick={() => onAskAI?.(`Analyze columns in ${fileName}`)}>
+                  Analyze specific columns
+                </li>
+                <li onClick={() => onAskAI?.(`Find patterns and trends in ${fileName}`)}>
+                  Find patterns or trends
+                </li>
+                <li onClick={() => onAskAI?.(`Calculate statistics for ${fileName}`)}>
+                  Calculate statistics
+                </li>
+              </ul>
+            </>
+          ) : (
+            <p>This file cannot be displayed as text.</p>
+          )}
           <p><strong>File:</strong> {fileContent.path}</p>
         </div>
       </div>

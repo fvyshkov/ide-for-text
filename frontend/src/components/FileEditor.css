@@ -74,6 +74,7 @@
   justify-content: center;
   align-items: center;
   text-align: center;
+  padding: 20px;
 }
 
 /* Light theme binary */
@@ -86,9 +87,15 @@
   color: #a0a0a0;
 }
 
+.binary-file-message {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
 .binary-file-message h3 {
-  margin: 0 0 10px 0;
-  font-weight: normal;
+  margin: 0 0 15px 0;
+  font-weight: 600;
+  font-size: 1.2rem;
 }
 
 /* Light theme binary h3 */
@@ -102,7 +109,34 @@
 }
 
 .binary-file-message p {
-  margin: 5px 0;
+  margin: 10px 0;
+  line-height: 1.5;
+}
+
+.binary-file-message ul {
+  text-align: left;
+  margin: 15px 0;
+  padding-left: 25px;
+}
+
+.binary-file-message li {
+  margin: 8px 0;
+  color: #007acc;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.binary-file-message li:hover {
+  color: #0056b3;
+}
+
+/* Dark theme list items */
+[data-theme="dark"] .binary-file-message li {
+  color: #0098ff;
+}
+
+[data-theme="dark"] .binary-file-message li:hover {
+  color: #40b3ff;
 }
 
 .file-editor-header {
@@ -189,5 +223,9 @@
     max-width: 100%;
     word-break: break-all;
     white-space: normal;
+  }
+  
+  .binary-file-message {
+    padding: 15px;
   }
 }

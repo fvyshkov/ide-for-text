@@ -5,13 +5,16 @@ Shows thinking process to users in real-time
 import os
 import time
 import asyncio
-from typing import AsyncGenerator, Dict, Any
+from typing import AsyncGenerator, Dict, Any, Optional
 from dotenv import load_dotenv
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
+
+# Import data analysis tools
+from tools.data_analysis import DataAnalysisTool
 
 # Load environment variables from parent directory
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -53,7 +56,12 @@ class TransparentAIAgent:
         )
         
         # Bind tools to the model  
-        self.llm_with_tools = self.llm.bind_tools([simple_calculator])
+        self.llm_with_tools = self.llm.bind_tools([
+            simple_calculator,
+            DataAnalysisTool.analyze_data,
+            DataAnalysisTool.query_data,
+            DataAnalysisTool.aggregate_data
+        ])
         
         # Create transparent prompt
         self.system_prompt = """You are a transparent AI assistant that ALWAYS explains your thinking process step by step, regardless of how the question is asked.
@@ -79,7 +87,7 @@ Remember:
   * For decimal results, show up to 4 decimal places
   * NEVER mention using any calculator or tools"""
     
-    async def analyze(self, user_query: str) -> AsyncGenerator[Dict[str, Any], None]:
+    async def analyze(self, user_query: str, project_path: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Analyze user query and stream thoughts/results
         
@@ -97,9 +105,11 @@ Remember:
                 "timestamp": time.time()
             }
             
-            # Create messages
+            # Create messages with context
+            context = f"Working directory: {project_path}" if project_path else "No working directory set"
             messages = [
                 ("system", self.system_prompt),
+                ("system", context),
                 ("human", user_query)
             ]
             
@@ -124,9 +134,18 @@ Remember:
                         "timestamp": time.time()
                     }
                     
-                    # Execute tool (simplified for now)
+                    # Execute tool
+                    tool_result = None
                     if tool_call['name'] == 'simple_calculator':
                         tool_result = simple_calculator.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'analyze_data':
+                        tool_result = DataAnalysisTool.analyze_data.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'query_data':
+                        tool_result = DataAnalysisTool.query_data.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'aggregate_data':
+                        tool_result = DataAnalysisTool.aggregate_data.invoke(tool_call['args'])
+                    
+                    if tool_result:
                         yield {
                             "type": "tool_result",
                             "content": f"✅ Tool result: {tool_result}",
