@@ -1,6 +1,6 @@
 """
 FastAPI backend for text IDE
-Provides file system operations and WebSocket support for real-time file synchronization
+Provides file system operations, WebSocket support, and AI analysis capabilities
 """
 import os
 import json
@@ -9,9 +9,12 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import aiofiles
+
+# AI Agent import
+from ai_agent import get_ai_agent
 # import magic  # Temporarily disabled due to libmagic dependency issues
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -55,6 +58,10 @@ class FileContent(BaseModel):
 class WriteFileRequest(BaseModel):
     path: str
     content: str
+
+class AIAnalysisRequest(BaseModel):
+    query: str
+    file_paths: Optional[List[str]] = None
 
 class FileWatcher(FileSystemEventHandler):
     """File system watcher for detecting changes on disk"""
@@ -285,6 +292,44 @@ async def pick_directory():
         return {"path": None, "success": False, "message": "Dialog timeout"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error opening folder picker: {str(e)}")
+
+@app.post("/api/ai/analyze")
+async def analyze_with_ai(request: AIAnalysisRequest):
+    """
+    Analyze user query with AI agent and stream thoughts
+    Returns streaming response with real-time AI thinking process
+    """
+    try:
+        agent = get_ai_agent()
+        
+        async def generate_stream():
+            """Generate streaming response"""
+            async for thought in agent.analyze(request.query):
+                # Format as Server-Sent Events
+                data = json.dumps(thought)
+                yield f"data: {data}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Content-Type": "text/plain; charset=utf-8"
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis error: {str(e)}")
+
+@app.get("/api/ai/test")
+async def test_ai():
+    """Test AI agent connectivity"""
+    try:
+        agent = get_ai_agent()
+        return {"status": "ok", "message": "AI agent initialized successfully"}
+    except Exception as e:
+        return {"status": "error", "message": f"AI agent error: {str(e)}"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
