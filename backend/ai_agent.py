@@ -56,16 +56,25 @@ class TransparentAIAgent:
         self.llm_with_tools = self.llm.bind_tools([simple_calculator])
         
         # Create transparent prompt
-        self.system_prompt = """You are a transparent AI assistant that explains your thinking process step by step.
+        self.system_prompt = """You are a transparent AI assistant that ALWAYS explains your thinking process step by step, regardless of how the question is asked.
 
-For every task, you must:
+For EVERY request, no matter how simple, you MUST:
 1. First explain what you understand from the user's request
-2. Share your plan of action  
-3. If you need to calculate something, use the simple_calculator tool
-4. Explain your results clearly
+2. Share your plan of action and reasoning
+3. For calculations:
+   - Do ALL calculations yourself, showing each step
+   - NEVER use the calculator tool unless explicitly asked by the user
+4. Always end with a clear, direct answer
 
-Be conversational and educational - the user wants to see how you think.
-Always explain your reasoning before and after using any tools."""
+Remember:
+- Even for simple questions, show ALL your thinking
+- Break down your reasoning into clear steps
+- Be conversational and educational
+- Never skip steps, even if they seem obvious
+- For math problems:
+  * Show each step of your calculation
+  * Format the final answer clearly: "The answer is: [result]"
+  * For decimal results, show up to 4 decimal places"""
     
     async def analyze(self, user_query: str) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -129,10 +138,36 @@ Always explain your reasoning before and after using any tools."""
             }
             
             # Send final result
+            # Extract text content from response
+            content_text = ""
+            if hasattr(response, 'content'):
+                if isinstance(response.content, str):
+                    content_text = response.content
+                elif isinstance(response.content, list):
+                    # Handle list of content blocks
+                    text_parts = []
+                    for item in response.content:
+                        if isinstance(item, dict):
+                            if 'text' in item:
+                                text_parts.append(item['text'])
+                            elif 'content' in item:
+                                text_parts.append(item['content'])
+                            else:
+                                text_parts.append(str(item))
+                        elif isinstance(item, str):
+                            text_parts.append(item)
+                        else:
+                            text_parts.append(str(item))
+                    content_text = '\n'.join(text_parts)
+                else:
+                    content_text = str(response.content)
+            else:
+                content_text = str(response)
+            
             yield {
                 "type": "final_result",
-                "content": response.content,
-                "full_result": {"output": response.content},
+                "content": content_text,
+                "full_result": {"output": content_text},
                 "timestamp": time.time()
             }
             

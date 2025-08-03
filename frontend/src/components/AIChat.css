@@ -306,3 +306,132 @@
 .ai-chat-messages::-webkit-scrollbar-thumb:hover {
   background: var(--chat-meta-color);
 }
+
+/* AI Thinking Process Styles */
+.message.thinking {
+  opacity: 0.8;
+}
+
+.message.thinking .message-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.message.thinking .message-content {
+  background-color: var(--message-ai-background);
+  border-left: 4px solid #667eea;
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+.message.tool-use {
+  opacity: 0.9;
+}
+
+.message.tool-use .message-avatar {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+}
+
+.message.tool-use .message-content {
+  background-color: var(--message-ai-background);
+  border-left: 4px solid #f093fb;
+}
+
+.message.tool-result {
+  opacity: 0.9;
+}
+
+.message.tool-result .message-avatar {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+.message.tool-result .message-content {
+  background-color: var(--message-ai-background);
+  border-left: 4px solid #4facfe;
+}
+
+.thinking-type {
+  background: rgba(102, 126, 234, 0.2);
+  color: #667eea;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 0.75em;
+  margin-left: 8px;
+}
+
+.tool-input {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.tool-input small {
+  color: var(--chat-meta-color);
+}
+
+/* Code and JSON formatting */
+.message-content pre {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 8px;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.9em;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+[data-theme="dark"] .message-content pre {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Copy Button Styles */
+.copy-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--chat-meta-color);
+  transition: all 0.2s ease;
+  opacity: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.copy-button:hover {
+  background-color: var(--chat-button-hover);
+  color: var(--chat-title-color);
+}
+
+.copy-button:active {
+  transform: scale(0.95);
+}
+
+/* Show copy button on message hover */
+.message:hover .copy-button {
+  opacity: 1;
+}
+
+/* Always show copy button for copied state */
+.copy-button.copied {
+  opacity: 1;
+  color: #4caf50;
+}
+
+/* Update message header to accommodate copy button */
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  min-height: 24px;
+}

@@ -1,12 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FaPaperPlane, FaRobot, FaUser, FaTrash } from 'react-icons/fa';
+import { FaPaperPlane, FaRobot, FaUser, FaTrash, FaBrain, FaTools, FaCheckCircle, FaCopy, FaCheck } from 'react-icons/fa';
 import './AIChat.css';
 
 interface Message {
   id: string;
-  type: 'user' | 'assistant';
+  type: 'user' | 'assistant' | 'thinking' | 'tool_use' | 'tool_result';
   content: string;
   timestamp: Date;
+  metadata?: {
+    tool_name?: string;
+    tool_input?: any;
+    thinking_type?: string;
+  };
 }
 
 interface AIChatProps {
@@ -26,6 +31,7 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -71,6 +77,7 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const originalInput = inputValue.trim();
     setInputValue('');
     setIsLoading(true);
     
@@ -81,18 +88,116 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
       }
     }, 0);
 
-    // Simulate AI response (replace with actual API call)
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+    try {
+      // Call our real AI API with streaming
+      const response = await fetch('http://localhost:8001/api/ai/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: originalInput,
+          file_paths: currentFile ? [currentFile] : undefined
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (reader) {
+        let buffer = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) break;
+          
+          // Add chunk to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                // Handle Server-Sent Events format (data: {...})
+                let jsonData = line.trim();
+                if (jsonData.startsWith('data: ')) {
+                  jsonData = jsonData.substring(6); // Remove 'data: ' prefix
+                }
+                
+                if (jsonData) {
+                  const event = JSON.parse(jsonData);
+                  
+                  // Create message based on event type
+                  // Ensure content is always a string and format JSON-like content
+                  let content = event.content;
+                  if (typeof content !== 'string') {
+                    content = JSON.stringify(content, null, 2);
+                  } else if (content.includes('{') && content.includes('}')) {
+                    // Try to format JSON-like strings more readably
+                    try {
+                      const parsed = JSON.parse(content);
+                      content = JSON.stringify(parsed, null, 2);
+                    } catch {
+                      // If parsing fails, keep original string
+                    }
+                  }
+
+                  const aiMessage: Message = {
+                    id: `ai-${Date.now()}-${Math.random()}`,
+                    type: event.type === 'final_result' ? 'assistant' : 
+                          event.type === 'tool_use' ? 'tool_use' :
+                          event.type === 'tool_result' ? 'tool_result' : 'thinking',
+                    content: content,
+                    timestamp: new Date(),
+                    metadata: {
+                      tool_name: event.tool_name,
+                      tool_input: event.tool_input,
+                      thinking_type: event.type
+                    }
+                  };
+
+                  setMessages(prev => {
+                    // Prevent duplicate messages
+                    const isDuplicate = prev.some(msg => 
+                      msg.content === aiMessage.content && 
+                      msg.type === aiMessage.type &&
+                      Math.abs(msg.timestamp.getTime() - aiMessage.timestamp.getTime()) < 1000
+                    );
+                    
+                    if (isDuplicate) {
+                      return prev;
+                    }
+                    
+                    return [...prev, aiMessage];
+                  });
+                }
+              } catch (e) {
+                console.error('Failed to parse AI event:', e, 'Line:', line);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('AI API Error:', error);
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
         type: 'assistant',
-        content: `I received your message: "${userMessage.content}"\n\nThis is a simulated response. In a real implementation, this would connect to an AI service like OpenAI's API or similar.\n\nCurrent context:\n- File: ${currentFile || 'No file selected'}\n- Project: ${projectPath || 'No project loaded'}`,
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date()
       };
-      
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000 + Math.random() * 2000);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -115,6 +220,57 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
     return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const getMessageIcon = (type: string) => {
+    switch (type) {
+      case 'user': return <FaUser />;
+      case 'thinking': return <FaBrain />;
+      case 'tool_use': return <FaTools />;
+      case 'tool_result': return <FaCheckCircle />;
+      default: return <FaRobot />;
+    }
+  };
+
+  const getMessageClass = (type: string) => {
+    switch (type) {
+      case 'thinking': return 'message thinking';
+      case 'tool_use': return 'message tool-use';
+      case 'tool_result': return 'message tool-result';
+      default: return `message ${type}`;
+    }
+  };
+
+  const copyToClipboard = async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      
+      // Reset the copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedMessageId(null);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = content;
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      try {
+        document.execCommand('copy');
+        setCopiedMessageId(messageId);
+        setTimeout(() => {
+          setCopiedMessageId(null);
+        }, 2000);
+      } catch (fallbackErr) {
+        console.error('Fallback copy failed: ', fallbackErr);
+      }
+      
+      document.body.removeChild(textArea);
+    }
+  };
+
   return (
     <div className="ai-chat">
       <div className="ai-chat-header">
@@ -133,17 +289,34 @@ const AIChat: React.FC<AIChatProps> = ({ currentFile, projectPath }) => {
 
       <div className="ai-chat-messages">
         {messages.map((message) => (
-          <div key={message.id} className={`message ${message.type}`}>
+          <div key={message.id} className={getMessageClass(message.type)}>
             <div className="message-header">
               <div className="message-avatar">
-                {message.type === 'user' ? <FaUser /> : <FaRobot />}
+                {getMessageIcon(message.type)}
               </div>
               <span className="message-time">
                 {formatTimestamp(message.timestamp)}
               </span>
+              {message.metadata?.thinking_type && (
+                <span className="thinking-type">
+                  {message.metadata.thinking_type}
+                </span>
+              )}
+              <button
+                className={`copy-button ${copiedMessageId === message.id ? 'copied' : ''}`}
+                onClick={() => copyToClipboard(message.id, message.content)}
+                title="Copy message"
+              >
+                {copiedMessageId === message.id ? <FaCheck /> : <FaCopy />}
+              </button>
             </div>
             <div className="message-content">
               {message.content}
+              {message.metadata?.tool_input && (
+                <div className="tool-input">
+                  <small>Input: {JSON.stringify(message.metadata.tool_input)}</small>
+                </div>
+              )}
             </div>
           </div>
         ))}
