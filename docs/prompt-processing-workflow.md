@@ -2,399 +2,353 @@
 
 ## Overview
 
-This document describes the comprehensive workflow for processing complex AI prompts in the Text IDE system, leveraging LangChain framework for intelligent data analysis, file processing, and code generation.
+This document describes the simplified, transparent workflow for processing AI prompts in the Text IDE system, leveraging LangChain framework with Claude 3.5 for intelligent data analysis and code generation.
+
+## Architecture Philosophy
+
+**Core Principles:**
+- **Transparency**: Show the AI's thinking process in real-time
+- **Simplicity**: Minimal layers between user and AI
+- **Streaming-first**: Immediate feedback on every step
+- **Tool-focused**: Let LangChain handle orchestration
 
 ## Architecture Components
 
-### Backend Services
-- **LangChain Agent**: Orchestrates prompt analysis and tool selection
-- **File Analysis Tools**: Excel/text file processing and data extraction
-- **Code Generation Engine**: Python script generation for data analysis
-- **Safe Execution Environment**: Sandboxed Python execution
-- **Result Processing**: Output file management and response assembly
+### Core Stack
+- **Claude 3.5 Sonnet API**: Primary LLM for reasoning and code generation
+- **LangChain Agent**: Orchestration with ReAct pattern
+- **Streaming Callbacks**: Real-time thought process visibility
+- **Universal Tools**: Simplified tool set for data analysis and code execution
 
 ### Frontend Integration
-- **AI Chat Interface**: User interaction and result display
-- **File Preview**: Visual representation of generated outputs
-- **Progress Tracking**: Real-time execution monitoring
+- **AI Chat Interface**: Real-time streaming of agent thoughts
+- **Thinking Display**: Visual representation of reasoning chain
+- **Progress Indicators**: Live execution status
 
-## Detailed Workflow Example
+## Simplified Workflow Example
 
-Let's trace through a complete workflow using this example prompt:
+Let's trace through the streamlined workflow with full transparency:
 
 > **User Prompt**: *"Find correlations between sales and temperature in the file sales.xlsx and create a beautiful chart with trend analysis"*
 
 ---
 
-## 🔄 Step-by-Step Processing
+## 🔄 Transparent Processing Flow
 
-### 1. **Input Reception**
-```
-Frontend → Backend → LangChain Agent
-```
+### 1. **Direct Agent Engagement with Streaming**
 
-**What happens:**
-- User enters prompt in AI chat interface
-- Frontend sends POST request to `/api/ai/analyze`
-- Backend receives: `{query: "...", file_paths: ["sales.xlsx"]}`
-
-### 2. **Agent Planning Phase**
 ```python
-FileAnalysisAgent.process_request()
+# Single endpoint with streaming
+@app.post("/api/ai/analyze")
+async def analyze(request: AnalyzeRequest):
+    agent = TransparentAgent(
+        llm=Claude(model="claude-3-sonnet", streaming=True),
+        callbacks=[StreamingThoughtCallback(websocket)]
+    )
+    
+    async for event in agent.astream_events(request.query):
+        yield event
 ```
 
-**LangChain Agent Analysis:**
-- **Task Identification**: Data analysis + visualization
-- **File Assessment**: `sales.xlsx` 
-- **Tool Selection**: excel_analysis, python_executor
-
-**Agent Internal Reasoning:**
+**Real-time UI Updates:**
 ```
-I need to:
-1. First examine the Excel file structure
-2. Find correlation between sales and temperature  
-3. Create a visualization with trend line
-4. Return the results
+👤 User: "Find correlations between sales and temperature..."
 
-I'll use excel_analysis tool first, then python_executor.
+🤖 AI Assistant (thinking out loud):
+┌─ Planning ──────────────────────────────────┐
+│ 🤔 Understanding request...                 │
+│    Need to: analyze correlation + visualize │
+│ 💭 Breaking down the task:                  │
+│    1. Load Excel file                       │
+│    2. Statistical analysis                  │
+│    3. Create visualization                  │
+└─────────────────────────────────────────────┘
 ```
 
-### 3. **Tool Execution #1 - File Analysis**
+### 2. **Transparent Tool Execution**
+
+**Agent streams its reasoning:**
 ```python
-ExcelAnalysisTool.run("sales.xlsx")
-```
+# LangChain agent with explicit reasoning
+agent_prompt = """You are a transparent AI assistant. 
+Always explain your thinking process step by step.
 
-**Processing:**
-```python
-df = pd.read_excel("sales.xlsx")
-return f"""
-File: sales.xlsx
-Shape: (365, 4)
-Columns: ['date', 'sales', 'temperature', 'region']
-Data types: {'date': 'datetime64', 'sales': 'int64', 'temperature': 'float64', 'region': 'object'}
-Sample data:
-        date  sales  temperature region
-0 2023-01-01   1200         -2.5   North
-1 2023-01-02   1450          1.2   North
-2 2023-01-03   1380         -0.8   North
+Current task: {input}
+
+Think step by step:
+1. What do I need to do?
+2. What tools should I use?
+3. Explain each action before taking it.
+
+{agent_scratchpad}
 """
 ```
 
-**Result**: Agent now understands the data structure ✅
-
-### 4. **Agent Reasoning & Decision Making**
-
-**Agent Strategic Planning:**
+**Live streaming to user:**
 ```
-Data Structure Analysis Complete:
-- sales column (int64) - dependent variable
-- temperature column (float64) - independent variable  
-- 365 rows of daily data - sufficient sample size
-- Need correlation analysis + visualization
-
-Next Action: Generate Python code for:
-1. Statistical correlation calculation
-2. Professional scatter plot with regression line
-3. High-quality output generation
+┌─ Executing ─────────────────────────────────┐
+│ 🔧 Using DataAnalysisTool                   │
+│    → Reading sales.xlsx structure...        │
+│ ✓ Found: 365 rows, columns: date, sales,   │
+│   temperature, region                       │
+│ 💭 Good dataset for correlation analysis    │
+│                                             │
+│ 🔧 Using PythonExecutor                     │
+│    → Computing Pearson correlation...       │
+│ 📊 Writing analysis code...                 │
+└─────────────────────────────────────────────┘
 ```
 
-### 5. **Code Generation Phase**
-
-**Agent generates optimized Python code:**
+### 3. **Simplified Tool Architecture**
 
 ```python
-generated_code = """
+# Two universal tools instead of many specialized ones
+class UniversalDataTool(BaseTool):
+    """Handles all data operations - reading, analyzing, transforming"""
+    name = "data_tool"
+    description = "Read and analyze any data file (Excel, CSV, JSON, etc.)"
+    
+    def _run(self, file_path: str, operation: str = "analyze"):
+        # Single tool handles multiple operations
+        if operation == "analyze":
+            return self._analyze_file(file_path)
+        elif operation == "transform":
+            return self._transform_data(file_path)
+
+class CodeExecutor(BaseTool):
+    """Execute code with automatic result capture"""
+    name = "code_executor"
+    description = "Execute Python code for analysis and visualization"
+    
+    def _run(self, code: str):
+        # Simplified execution with built-in safety
+        return safe_execute(code, timeout=30)
+```
+
+### 4. **Streamlined Code Generation**
+
+**Agent generates focused, minimal code:**
+
+```python
+# Streaming thought: "I'll use a template-based approach for cleaner code"
+analysis_code = """
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
 from scipy.stats import pearsonr
-import os
 
-# Load and prepare data
-df = pd.read_excel('/data/sales.xlsx')
+# Load data
+df = pd.read_excel('sales.xlsx')
 
-# Calculate correlation statistics
-correlation, p_value = pearsonr(df['sales'], df['temperature'])
+# Calculate correlation
+corr, p_value = pearsonr(df['temperature'], df['sales'])
 
-# Create professional visualization
-plt.style.use('seaborn-v0_8')
-fig, ax = plt.subplots(figsize=(12, 8))
+# Create visualization
+plt.figure(figsize=(10, 6))
+plt.scatter(df['temperature'], df['sales'], alpha=0.6)
+plt.xlabel('Temperature (°C)')
+plt.ylabel('Sales')
+plt.title(f'Correlation: {corr:.3f} (p={p_value:.3f})')
 
-# Scatter plot with styling
-scatter = ax.scatter(df['temperature'], df['sales'], 
-                    alpha=0.6, s=60, c='steelblue', 
-                    edgecolors='white', linewidth=0.5)
-
-# Trend line calculation and plotting
+# Add trend line
 z = np.polyfit(df['temperature'], df['sales'], 1)
 p = np.poly1d(z)
-ax.plot(df['temperature'], p(df['temperature']), 
-        "r--", alpha=0.8, linewidth=2, label='Trend Line')
+plt.plot(df['temperature'], p(df['temperature']), "r--", alpha=0.8)
 
-# Professional styling
-ax.set_xlabel('Temperature (°C)', fontsize=14, fontweight='bold')
-ax.set_ylabel('Sales', fontsize=14, fontweight='bold')
-ax.set_title(f'Sales vs Temperature Correlation Analysis\\nPearson r = {correlation:.3f} (p = {p_value:.3f})', 
-            fontsize=16, fontweight='bold', pad=20)
-
-# Statistical information box
-textstr = f'''Correlation Analysis:
-• Pearson r: {correlation:.3f}
-• P-value: {p_value:.3f}
-• Relationship: {"Strong" if abs(correlation) > 0.7 else "Moderate" if abs(correlation) > 0.5 else "Weak"}
-• Direction: {"Positive" if correlation > 0 else "Negative"}'''
-
-props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
-        verticalalignment='top', bbox=props)
-
-# Save high-quality output
-plt.tight_layout()
-output_path = '/temp/outputs/sales_temperature_correlation.jpg'
-os.makedirs('/temp/outputs', exist_ok=True)
-plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
-plt.close()
-
-# Generate comprehensive summary
-summary = f'''
-CORRELATION ANALYSIS RESULTS
-
-📊 Statistical Summary:
-- Correlation coefficient: {correlation:.4f}
-- P-value: {p_value:.4f}
-- Sample size: {len(df)} observations
-
-📈 Interpretation:
-- Strength: {"Strong" if abs(correlation) > 0.7 else "Moderate" if abs(correlation) > 0.5 else "Weak"} correlation
-- Direction: {"Positive" if correlation > 0 else "Negative"} relationship
-- Significance: {"Significant" if p_value < 0.05 else "Not significant"} (α = 0.05)
-
-🎯 Business Insight:
-{"Higher temperatures are associated with higher sales" if correlation > 0 else "Higher temperatures are associated with lower sales"}
-
-📁 Generated Files:
-- sales_temperature_correlation.jpg (visualization)
-- analysis_summary.txt (this summary)
-'''
-
-with open('/temp/outputs/analysis_summary.txt', 'w') as f:
-    f.write(summary)
-
-print("✅ Analysis completed successfully!")
-print(f"Correlation: {correlation:.4f}")
-print(f"Output saved to: {output_path}")
+plt.savefig('correlation_analysis.png', dpi=150, bbox_inches='tight')
+print(f"Analysis complete: r={corr:.3f}, p={p_value:.3f}")
 """
+
+# Agent explains while coding:
+# 💭 "Using minimal code for clarity"
+# 💭 "Template approach reduces complexity"
+# 💭 "Focus on core functionality"
 ```
 
-### 6. **Tool Execution #2 - Safe Code Execution**
+### 5. **Direct Result Streaming**
+
 ```python
-SafePythonTool.run(generated_code)
+# Results stream directly as they're generated
+async def stream_results(code_output):
+    # Real-time streaming of execution
+    yield {"type": "execution_start", "timestamp": now()}
+    
+    async for line in execute_streaming(code):
+        yield {"type": "output", "content": line}
+        
+    yield {"type": "execution_complete", "files": generated_files}
 ```
 
-**Execution Process:**
-1. **Sandbox Creation**: Creates isolated environment `/tmp/sandbox_12345/`
-2. **Code Validation**: Checks for security violations
-3. **Execution**: Runs code with 30-second timeout
-4. **File Generation**: Creates output files
-5. **Result Capture**: Captures stdout/stderr
-
-**Execution Output:**
+**Live UI Updates:**
 ```
-Exit code: 0
-STDOUT:
-✅ Analysis completed successfully!
-Correlation: 0.7234
-Output saved to: /temp/outputs/sales_temperature_correlation.jpg
-
-STDERR:
-(empty)
-```
-
-**Generated Files:**
-- `/temp/outputs/sales_temperature_correlation.jpg` (High-quality visualization)
-- `/temp/outputs/analysis_summary.txt` (Statistical summary)
-
-### 7. **Result Processing & Assembly**
-
-**Agent processes execution results:**
-```python
-result = {
-    "status": "success",
-    "execution_time": "3.2s",
-    "statistical_results": {
-        "correlation": 0.7234,
-        "p_value": 0.0001,
-        "interpretation": "Strong positive correlation",
-        "significance": "Statistically significant"
-    },
-    "files_created": [
-        {
-            "type": "image",
-            "title": "Sales vs Temperature Correlation",
-            "path": "/temp/outputs/sales_temperature_correlation.jpg",
-            "preview_url": "/api/files/preview/sales_temperature_correlation.jpg",
-            "download_url": "/api/files/download/sales_temperature_correlation.jpg",
-            "metadata": {
-                "format": "JPEG",
-                "resolution": "3600x2400",
-                "size": "245KB"
-            }
-        },
-        {
-            "type": "text",
-            "title": "Statistical Analysis Summary", 
-            "path": "/temp/outputs/analysis_summary.txt",
-            "preview_url": "/api/files/preview/analysis_summary.txt"
-        }
-    ],
-    "summary": "Analysis reveals strong positive correlation (r=0.7234, p<0.001) between temperature and sales data..."
-}
-```
-
-### 8. **Response Transmission**
-
-**Backend → Frontend JSON Response:**
-```json
-{
-  "message": "✅ Analysis completed! Found strong positive correlation (r=0.7234) between temperature and sales.",
-  "results": [
-    {
-      "type": "image",
-      "title": "Sales vs Temperature Correlation Analysis",
-      "url": "/api/files/preview/sales_temperature_correlation.jpg",
-      "downloadUrl": "/api/files/download/sales_temperature_correlation.jpg",
-      "thumbnailUrl": "/api/files/thumbnail/sales_temperature_correlation.jpg"
-    },
-    {
-      "type": "summary",
-      "title": "Statistical Summary", 
-      "content": "Strong positive correlation (r=0.7234, p<0.001) indicates that higher temperatures are significantly associated with increased sales..."
-    }
-  ],
-  "taskId": "task_12345",
-  "executionTime": "3.2s",
-  "timestamp": "2024-01-15T10:30:45Z"
-}
-```
-
-### 9. **Frontend UI Display**
-
-**User Interface Presentation:**
-
-```
-🤖 AI Assistant
-✅ Analysis completed! Found strong positive correlation (r=0.7234) between temperature and sales.
-
-📊 [INTERACTIVE PREVIEW: sales_temperature_correlation.jpg]
-   📥 Download (245KB) | 🔍 View Full Size
-
-📋 Statistical Analysis Summary:
-   • Correlation Coefficient: 0.7234 (strong positive)
-   • P-value: < 0.001 (highly significant)  
-   • Business Interpretation: Higher temperatures → Higher sales
-   • Sample Size: 365 daily observations
-
-⏱️ Completed in 3.2 seconds
+┌─ Results ───────────────────────────────────┐
+│ ✓ Analysis complete: r=0.723, p<0.001       │
+│ 📊 Visualization saved                      │
+│ 💭 Strong positive correlation found        │
+└─────────────────────────────────────────────┘
 ```
 
 ---
 
-## Complete Workflow Diagram
+## Simplified Architecture Diagram
 
 ```mermaid
 graph TD
-    A[👤 User Input] --> B[🌐 Frontend]
-    B --> C[🚀 FastAPI Backend]
-    C --> D[🧠 LangChain Agent]
+    A[User Input] --> B[LangChain Agent with Claude 3.5]
+    B --> C[Streaming Thoughts]
+    C --> D[Frontend Display]
     
-    D --> E[🔍 Tool Selection]
-    E --> F[📊 Excel Analysis Tool]
-    F --> G[📈 Data Understanding]
+    B --> E[Universal Tools]
+    E --> F[Code Executor]
+    E --> G[Data Analyzer]
     
-    G --> H[🤖 Code Generation]
-    H --> I[⚙️ Python Execution Tool]
-    I --> J[📁 File Generation]
+    F --> H[Results Stream]
+    G --> H
+    H --> D
     
-    J --> K[✅ Result Processing]
-    K --> L[📤 Response Assembly]
-    L --> M[🎨 UI Display]
-    
-    style A fill:#e1f5fe
-    style D fill:#f3e5f5  
-    style I fill:#fff3e0
-    style M fill:#e8f5e8
+    style B fill:#f3e5f5
+    style C fill:#fff3e0
+    style D fill:#e8f5e8
 ```
 
-## Key Workflow Features
+## Key Architecture Benefits
 
-### 🧠 **Intelligent Decision Making**
-- **Autonomous Tool Selection**: Agent automatically chooses appropriate tools based on prompt analysis
-- **Context Awareness**: Understands file structure and data types before processing
-- **Dynamic Planning**: Adapts strategy based on intermediate results
+### 🎯 **Simplicity First**
+- **Minimal Layers**: Direct connection between user and AI
+- **Two Universal Tools**: Instead of many specialized ones
+- **Streaming by Default**: No complex state management
+- **LangChain Orchestration**: Let the framework handle complexity
 
-### 🔧 **Tool Orchestration**
-- **Sequential Execution**: Tools are executed in logical order
-- **Error Handling**: Graceful failure recovery with informative error messages
-- **Resource Management**: Automatic cleanup of temporary files and processes
+### 👁️ **Full Transparency**
+- **Visible Thinking**: Every reasoning step shown to user
+- **Tool Explanations**: AI explains why it's using each tool
+- **Progress Tracking**: Real-time status updates
+- **Error Context**: Clear explanations when things go wrong
 
-### 🔒 **Security & Safety**
-- **Sandboxed Execution**: All code runs in isolated environments
-- **Code Validation**: Security checks before execution
-- **Resource Limits**: CPU/memory/time constraints on code execution
-- **File Access Control**: Restricted file system access
+### ⚡ **Performance**
+- **Streaming Everything**: Immediate feedback, no waiting
+- **Minimal Overhead**: Fewer abstraction layers = faster response
+- **Smart Caching**: Built into LangChain
+- **Efficient Tools**: Universal tools reduce context switching
 
-### 📊 **Rich Output Generation**
-- **Multi-format Results**: Images, text files, data summaries
-- **Professional Visualizations**: High-quality charts and graphs
-- **Statistical Analysis**: Comprehensive data insights
-- **Interactive Previews**: Frontend integration for seamless viewing
+### 🔧 **Developer Experience**
+- **Clean Architecture**: Easy to understand and modify
+- **Standard Patterns**: Uses LangChain best practices
+- **Minimal Dependencies**: Only essential packages
+- **Clear Separation**: UI, Agent, Tools clearly defined
 
-### ⚡ **Performance Optimization**
-- **Streaming Responses**: Real-time progress updates
-- **Caching**: Intelligent caching of analysis results
-- **Parallel Processing**: Concurrent tool execution where possible
-- **Resource Pooling**: Efficient sandbox reuse
+## Implementation Example
 
-## Error Handling & Recovery
+### Backend Setup with LangChain
 
-### Common Error Scenarios:
-1. **File Access Errors**: Invalid file paths or permissions
-2. **Code Execution Errors**: Python runtime exceptions
-3. **Tool Selection Errors**: Inappropriate tool choices
-4. **Resource Limit Errors**: Timeout or memory exhaustion
+```python
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_anthropic import ChatAnthropic
+from langchain.callbacks import StreamingStdOutCallbackHandler
+from langchain.tools import Tool
 
-### Recovery Strategies:
-- **Graceful Degradation**: Partial results when possible
-- **Alternative Approaches**: Fallback tool selection
-- **User Feedback**: Clear error explanations and suggestions
-- **Automatic Retry**: For transient failures
+class TransparentAnalysisAgent:
+    def __init__(self):
+        # Initialize Claude 3.5 Sonnet
+        self.llm = ChatAnthropic(
+            model="claude-3-sonnet-20240229",
+            streaming=True,
+            callbacks=[StreamingStdOutCallbackHandler()]
+        )
+        
+        # Define universal tools
+        self.tools = [
+            Tool(
+                name="analyze_data",
+                func=self.universal_data_tool,
+                description="Analyze any data file format"
+            ),
+            Tool(
+                name="execute_code",
+                func=self.code_executor,
+                description="Execute Python code for analysis"
+            )
+        ]
+        
+        # Create agent with transparent prompt
+        self.agent = create_react_agent(
+            llm=self.llm,
+            tools=self.tools,
+            prompt=self.get_transparent_prompt()
+        )
+    
+    def get_transparent_prompt(self):
+        return """You are a transparent AI assistant that explains your thinking.
 
-## Future Enhancements
+For every task:
+1. First explain what you understand
+2. Share your analysis plan  
+3. Explain each tool use
+4. Interpret results clearly
 
-### Planned Features:
-- **Multi-language Support**: R, SQL, JavaScript execution
-- **Advanced Visualizations**: Interactive plots with Plotly
-- **Machine Learning Integration**: Automated model training
-- **Collaborative Features**: Shared analysis sessions
-- **Version Control**: Analysis history and reproducibility
+Current task: {input}
 
-## Technical Implementation Notes
+{agent_scratchpad}"""
+```
 
-### Dependencies:
-- **LangChain**: Core orchestration framework
-- **Pandas**: Data manipulation and analysis
-- **Matplotlib/Seaborn**: Visualization generation
-- **FastAPI**: Backend API framework
-- **React**: Frontend user interface
+### Frontend Streaming Display
 
-### Configuration:
-- **Model**: deepseek-coder:6.7b (local Ollama deployment)
-- **Execution Timeout**: 30 seconds default
-- **Memory Limit**: 512MB per sandbox
-- **File Size Limit**: 100MB per file
-- **Concurrent Tasks**: 5 maximum
+```typescript
+// React component for displaying agent thoughts
+const AgentThoughtStream: React.FC = () => {
+    const [thoughts, setThoughts] = useState<ThoughtEvent[]>([]);
+    
+    useEffect(() => {
+        const ws = new WebSocket('ws://localhost:8001/ws/agent');
+        
+        ws.onmessage = (event) => {
+            const thought = JSON.parse(event.data);
+            setThoughts(prev => [...prev, thought]);
+        };
+        
+        return () => ws.close();
+    }, []);
+    
+    return (
+        <div className="thought-stream">
+            {thoughts.map((thought, idx) => (
+                <ThoughtBubble key={idx} thought={thought} />
+            ))}
+        </div>
+    );
+};
+```
+
+## Technical Stack
+
+### Core Dependencies
+- **LangChain**: v0.1.0+ for agent orchestration
+- **Claude 3.5 Sonnet API**: Primary LLM (via Anthropic)
+- **FastAPI**: WebSocket support for streaming
+- **React**: Frontend with real-time updates
+
+### Configuration
+```yaml
+llm:
+  provider: anthropic
+  model: claude-3-sonnet-20240229
+  temperature: 0.3
+  max_tokens: 4096
+  streaming: true
+
+tools:
+  data_analyzer:
+    timeout: 30s
+    memory_limit: 512MB
+  code_executor:
+    sandbox: true
+    allowed_imports: [pandas, numpy, matplotlib, seaborn, scipy]
+
+ui:
+  thought_display: true
+  tool_transparency: true
+  execution_streaming: true
+```
 
 ---
 
-*This workflow documentation demonstrates the sophisticated AI-powered data analysis capabilities of the Text IDE system, showcasing how complex user prompts are intelligently processed and executed to deliver professional-grade results.*
+*This simplified architecture maintains the power of LangChain while dramatically reducing complexity, providing users with full visibility into the AI's reasoning process.*
