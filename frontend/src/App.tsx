@@ -6,7 +6,7 @@ import TripleSplitter from './components/TripleSplitter';
 import AIChat from './components/AIChat';
 import { FileTreeItem, FileContent } from './types';
 import { useTheme } from './contexts/ThemeContext';
-import { useWebSocket } from './hooks/useWebSocket';
+// import { useWebSocket } from './hooks/useWebSocket';
 // Native directory picker functionality
 import { FaSun, FaMoon, FaFolder, FaSync } from 'react-icons/fa';
 
@@ -26,38 +26,37 @@ function App() {
     aiChatRef.current?.askQuestion(question);
   }, []);
 
-  // Handle WebSocket messages
-  const handleWebSocketMessage = useCallback((message: any) => {
-    if (message.type === 'file_updated' && message.path === selectedFile) {
-      // File was updated externally, refresh content
-      console.log('🔄 WebSocket file update:', {
-        path: message.path,
-        sender: message.sender,
-        senderType: typeof message.sender,
-        type: message.type,
-        willReload: message.sender !== 'frontend',
-        selectedFile: selectedFile
-      });
-      
-      // Only reload if external change (not from our frontend)
-      // Skip reload for now to avoid infinite loops
-      console.log('⚠️ Skipping WebSocket file reload to avoid loops');
-    } else if (message.type === 'file_changed') {
-      // File system change detected, might need to refresh tree
-      if (message.path.startsWith(rootPath)) {
-        // File in current directory changed
-        console.log('File changed:', message.path);
-      }
-    }
-  }, [selectedFile, rootPath]);
+  // Handle WebSocket messages (disabled for now)
+  // const handleWebSocketMessage = useCallback((message: any) => {
+  //   if (message.type === 'file_updated') {
+  //     // File was updated externally
+  //     console.log('🔄 WebSocket file update:', message);
+  //     
+  //     // Only reload if it's our currently selected file
+  //     if (message.path === selectedFile) {
+  //       // Skip reload for now to avoid infinite loops
+  //       console.log('⚠️ Skipping WebSocket file reload to avoid loops');
+  //     }
+  //   } else if (message.type === 'file_changed') {
+  //     // File system change detected
+  //     console.log('File changed:', message.path);
+  //     
+  //     // Only refresh tree if change is in our current directory
+  //     if (rootPath && message.path.startsWith(rootPath)) {
+  //       console.log('Refreshing file tree due to changes');
+  //       // Будем обновлять дерево файлов позже, когда реализуем эту функцию
+  //     }
+  //   }
+  // }, [selectedFile, rootPath]);
 
-  // WebSocket connection with auto-reconnect
-  const { sendMessage } = useWebSocket({
-    url: 'ws://localhost:8001/ws',
-    onMessage: handleWebSocketMessage,
-    reconnectInterval: 3000,
-    maxReconnectAttempts: 5
-  });
+  // WebSocket connection temporarily disabled
+  // const { sendMessage } = useWebSocket({
+  //   url: 'ws://localhost:8001/ws',
+  //   onMessage: handleWebSocketMessage,
+  //   reconnectInterval: 3000,
+  //   maxReconnectAttempts: 5
+  // });
+  // const sendMessage = () => {}; // Placeholder (not needed anymore)
 
   const loadDirectory = useCallback(async (directoryPath: string) => {
     console.log('Loading directory:', directoryPath);
@@ -198,19 +197,18 @@ function App() {
 
       // Don't update local state - let Monaco manage its own content
 
-      // Notify WebSocket
-      // Send update via WebSocket
-      sendMessage({
-        type: 'file_update',
-        path: selectedFile,
-        content: newContent,
-        sender: 'frontend'
-      });
+      // Notify WebSocket (disabled for now)
+      // sendMessage({
+      //   type: 'file_update',
+      //   path: selectedFile,
+      //   content: newContent,
+      //   sender: 'frontend'
+      // });
     } catch (error) {
       console.error('Error saving file:', error);
       alert('Error saving file.');
     }
-  }, [selectedFile, sendMessage]);
+  }, [selectedFile]);
 
 
 

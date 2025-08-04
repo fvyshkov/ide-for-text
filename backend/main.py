@@ -5,6 +5,7 @@ Provides file system operations, WebSocket support, and AI analysis capabilities
 import os
 import json
 import asyncio
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -41,8 +42,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connected WebSocket clients
-websocket_connections: List[WebSocket] = []
+# Connected WebSocket clients with timestamps
+class WebSocketConnection:
+    def __init__(self, websocket: WebSocket, client_id: str):
+        self.websocket = websocket
+        self.client_id = client_id
+        self.last_ping = time.time()
+
+    async def send_ping(self) -> bool:
+        try:
+            await self.websocket.send_text('{"type": "ping"}')
+            self.last_ping = time.time()
+            return True
+        except:
+            return False
+
+    async def close(self):
+        try:
+            await self.websocket.close()
+        except:
+            pass
+
+websocket_connections: Dict[str, WebSocketConnection] = {}
+MAX_WEBSOCKET_CONNECTIONS = 1  # Reduced to 1 for testing
+print("WebSocket connections cleared on startup")
+
+async def cleanup_old_connections():
+    """Remove disconnected connections"""
+    global websocket_connections
+    current_time = time.time()
+    to_remove = []
+    
+    for client_id, conn in websocket_connections.items():
+        # Remove connections that haven't received a ping in 30 seconds
+        if current_time - conn.last_ping > 30:
+            print(f"Connection {client_id} timed out")
+            to_remove.append(client_id)
+            await conn.close()
+        elif not await conn.send_ping():
+            print(f"Connection {client_id} is dead")
+            to_remove.append(client_id)
+    
+    # Remove dead connections
+    for client_id in to_remove:
+        websocket_connections.pop(client_id, None)
+    
+    print(f"Active connections: {len(websocket_connections)}")
 
 class FileTreeItem(BaseModel):
     name: str
@@ -154,21 +199,18 @@ def build_file_tree(directory: str, max_depth: int = 10, current_depth: int = 0)
 
 async def broadcast_to_websockets(message: Dict[str, Any]):
     """Broadcast message to all connected WebSocket clients"""
+    await cleanup_old_connections()
+    
     if not websocket_connections:
         return
     
     message_str = json.dumps(message)
-    disconnected = []
     
-    for websocket in websocket_connections:
+    for websocket, _ in websocket_connections:
         try:
             await websocket.send_text(message_str)
         except:
-            disconnected.append(websocket)
-    
-    # Remove disconnected clients
-    for ws in disconnected:
-        websocket_connections.remove(ws)
+            pass  # Connection will be cleaned up in next cleanup_old_connections call
 
 @app.get("/")
 async def root():
@@ -380,8 +422,58 @@ async def test_ai():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time file synchronization"""
+    # Generate unique client ID based on remote address and a random component
+    client_id = f"{websocket.client.host}:{websocket.client.port}:{id(websocket)}"
+    
+    # Run cleanup before accepting new connection
+    await cleanup_old_connections()
+    
+    # Check if we have room for new connection
+    if len(websocket_connections) >= MAX_WEBSOCKET_CONNECTIONS:
+        print(f"Rejecting connection from {client_id} - too many connections")
+        await websocket.close(code=1008, reason="Too many connections")
+        return
+    
+    # Accept the connection
     await websocket.accept()
-    websocket_connections.append(websocket)
+    
+    # Create new connection object
+    conn = WebSocketConnection(websocket, client_id)
+    websocket_connections[client_id] = conn
+    print(f"New WebSocket connection from {client_id}")
+    
+    try:
+        # Send initial ping
+        if not await conn.send_ping():
+            print(f"Failed to send initial ping to {client_id}")
+            return
+            
+        while True:
+            try:
+                # Wait for messages
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                # Handle ping messages specially
+                if message.get("type") == "pong":
+                    conn.last_ping = time.time()
+                    continue
+                    
+                # Process other messages...
+                
+            except WebSocketDisconnect:
+                print(f"WebSocket disconnected: {client_id}")
+                break
+            except Exception as e:
+                print(f"Error processing message from {client_id}: {e}")
+                break
+                
+    finally:
+        # Clean up on exit
+        if client_id in websocket_connections:
+            await websocket_connections[client_id].close()
+            del websocket_connections[client_id]
+        print(f"Connection closed: {client_id}")
     
     try:
         while True:
@@ -411,7 +503,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
     
     except WebSocketDisconnect:
-        websocket_connections.remove(websocket)
+        pass  # Connection will be cleaned up in next cleanup_old_connections call
 
 if __name__ == "__main__":
     import uvicorn

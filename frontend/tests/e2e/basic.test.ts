@@ -43,6 +43,8 @@ test.describe('Text IDE Basic Functionality', () => {
     
     // Wait for file content to be loaded into editor
     await page.waitForSelector('.monaco-editor .view-line', { timeout: 10000 });
+    // Wait a bit for Monaco to fully initialize
+    await page.waitForTimeout(1000);
     
     // Check if file path is displayed
     await expect(page.getByText('example.txt', { exact: false })).toBeVisible();
