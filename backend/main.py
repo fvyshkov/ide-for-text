@@ -64,8 +64,29 @@ class WebSocketConnection:
             pass
 
 websocket_connections: Dict[str, WebSocketConnection] = {}
-MAX_WEBSOCKET_CONNECTIONS = 1  # Reduced to 1 for testing
+MAX_WEBSOCKET_CONNECTIONS = 10  # Increased for multiple tabs
 print("WebSocket connections cleared on startup")
+
+async def broadcast_to_websockets(message: dict):
+    """Broadcast message to all connected WebSocket clients"""
+    if not websocket_connections:
+        return
+        
+    print(f"📡 Broadcasting to {len(websocket_connections)} clients: {message}")
+    
+    # Send to all connections
+    dead_connections = []
+    for client_id, conn in websocket_connections.items():
+        try:
+            await conn.websocket.send_text(json.dumps(message))
+        except Exception as e:
+            print(f"Failed to send to {client_id}: {e}")
+            dead_connections.append(client_id)
+    
+    # Clean up dead connections
+    for client_id in dead_connections:
+        websocket_connections.pop(client_id, None)
+        print(f"Removed dead connection: {client_id}")
 
 async def cleanup_old_connections():
     """Remove disconnected connections"""
@@ -114,26 +135,41 @@ class FileWatcher(FileSystemEventHandler):
     
     def __init__(self):
         self.watched_paths = set()
+        self.last_event_time = {}  # To prevent duplicate events
     
     async def on_modified(self, event):
         if event.is_directory:
             return
+            
+        # Prevent duplicate events (filesystem can fire multiple events for one change)
+        current_time = time.time()
+        if event.src_path in self.last_event_time:
+            if current_time - self.last_event_time[event.src_path] < 0.5:  # 500ms debounce
+                return
+        
+        self.last_event_time[event.src_path] = current_time
+        
+        print(f"📁 File changed externally: {event.src_path}")
         
         # Notify all connected clients about file change
         message = {
             "type": "file_changed",
-            "path": event.src_path
+            "path": event.src_path,
+            "timestamp": current_time
         }
         await broadcast_to_websockets(message)
     
     def on_created(self, event):
-        asyncio.create_task(self.on_modified(event))
+        if not event.is_directory:
+            asyncio.create_task(self.on_modified(event))
     
     def on_deleted(self, event):
-        asyncio.create_task(self.on_modified(event))
+        if not event.is_directory:
+            asyncio.create_task(self.on_modified(event))
     
     def on_moved(self, event):
-        asyncio.create_task(self.on_modified(event))
+        if not event.is_directory:
+            asyncio.create_task(self.on_modified(event))
 
 # Global file watcher
 file_watcher = FileWatcher()
@@ -288,11 +324,23 @@ async def get_file_content(path: str):
 async def write_file(request: WriteFileRequest):
     """Write content to file"""
     try:
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(request.path), exist_ok=True)
+        print(f"💾 Saving file: {request.path}")
+        print(f"📄 Content length: {len(request.content)} characters")
         
+        # Get directory path
+        dir_path = os.path.dirname(request.path)
+        print(f"📁 Directory: {dir_path}")
+        
+        # Create directory if it doesn't exist (but only if dir_path is not empty)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+            print(f"✅ Directory created/exists: {dir_path}")
+        
+        # Write file
         async with aiofiles.open(request.path, mode='w', encoding='utf-8') as f:
             await f.write(request.content)
+        
+        print(f"✅ File saved successfully: {request.path}")
         
         # Notify WebSocket clients about file change
         await broadcast_to_websockets({
@@ -454,12 +502,22 @@ async def websocket_endpoint(websocket: WebSocket):
                 data = await websocket.receive_text()
                 message = json.loads(data)
                 
-                # Handle ping messages specially
+                # Handle different message types
                 if message.get("type") == "pong":
                     conn.last_ping = time.time()
                     continue
-                    
-                # Process other messages...
+                elif message.get("type") == "file_updated":
+                    # File was updated by a client, broadcast to others
+                    file_path = message.get("path")
+                    if file_path:
+                        print(f"🔄 Broadcasting file update: {file_path}")
+                        await broadcast_to_websockets({
+                            "type": "file_updated",
+                            "path": file_path,
+                            "content": message.get("content"),
+                            "sender": message.get("sender", "unknown"),
+                            "timestamp": message.get("timestamp", time.time())
+                        })
                 
             except WebSocketDisconnect:
                 print(f"WebSocket disconnected: {client_id}")
@@ -475,35 +533,7 @@ async def websocket_endpoint(websocket: WebSocket):
             del websocket_connections[client_id]
         print(f"Connection closed: {client_id}")
     
-    try:
-        while True:
-            # Listen for messages from client
-            data = await websocket.receive_text()
-            message = json.loads(data)
-            
-            # Handle different message types
-            if message.get("type") == "ping":
-                await websocket.send_text(json.dumps({"type": "pong"}))
-            elif message.get("type") == "file_update":
-                # Client updated a file
-                file_path = message.get("path")
-                content = message.get("content")
-                
-                if file_path and content is not None:
-                    # Save to disk
-                    async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
-                        await f.write(content)
-                    
-                    # Broadcast to other clients
-                    await broadcast_to_websockets({
-                        "type": "file_updated",
-                        "path": file_path,
-                        "content": content,
-                        "sender": id(websocket)  # Don't send back to sender
-                    })
-    
-    except WebSocketDisconnect:
-        pass  # Connection will be cleaned up in next cleanup_old_connections call
+
 
 if __name__ == "__main__":
     import uvicorn

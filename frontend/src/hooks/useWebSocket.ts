@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface WebSocketMessage {
   type: string;
   path?: string;
   content?: string;
   sender?: string;
+  timestamp?: number;
 }
 
 interface UseWebSocketOptions {
@@ -12,94 +13,147 @@ interface UseWebSocketOptions {
   onMessage?: (message: WebSocketMessage) => void;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  enabled?: boolean;
 }
+
+// Global WebSocket instance to ensure only one connection per app
+let globalWebSocket: WebSocket | null = null;
+let globalListeners: Set<(message: WebSocketMessage) => void> = new Set();
+let connectionPromise: Promise<WebSocket> | null = null;
+
+const createConnection = async (url: string): Promise<WebSocket> => {
+  return new Promise((resolve, reject) => {
+    if (globalWebSocket && globalWebSocket.readyState === WebSocket.OPEN) {
+      resolve(globalWebSocket);
+      return;
+    }
+
+    console.log('🔌 Creating new WebSocket connection...');
+    const ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      console.log('✅ WebSocket connected successfully');
+      globalWebSocket = ws;
+      resolve(ws);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        // Broadcast to all listeners
+        globalListeners.forEach(listener => listener(message));
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error);
+      }
+    };
+
+    ws.onclose = (event) => {
+      console.log('❌ WebSocket disconnected, code:', event.code);
+      globalWebSocket = null;
+      connectionPromise = null;
+      
+      // If server rejected with too many connections, don't retry immediately
+      if (event.code === 1008) {
+        console.log('🚫 Server rejected connection - too many connections');
+        return;
+      }
+
+      // Auto-reconnect after a delay if there are active listeners
+      if (globalListeners.size > 0) {
+        setTimeout(() => {
+          console.log('🔄 Auto-reconnecting WebSocket...');
+          connectionPromise = createConnection(url);
+        }, 3000);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      reject(error);
+    };
+  });
+};
 
 export const useWebSocket = ({
   url,
   onMessage,
   reconnectInterval = 3000,
-  maxReconnectAttempts = 5
+  maxReconnectAttempts = 5,
+  enabled = true
 }: UseWebSocketOptions) => {
-  const [ws, setWs] = useState<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isRejected, setIsRejected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const onMessageRef = useRef(onMessage);
+  
+  // Keep the callback ref updated
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
-  const connect = useCallback(() => {
-    // Don't try to connect if we're rejected or already connected
-    if (isRejected || (ws && ws.readyState === WebSocket.OPEN)) {
-      return;
-    }
-
-    try {
-      console.log('Connecting to WebSocket...');
-      const websocket = new WebSocket(url);
-
-      websocket.onopen = () => {
-        console.log('WebSocket connected successfully');
-        setIsConnected(true);
-        setReconnectAttempts(0);
-        setIsRejected(false);
-      };
-
-      websocket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          onMessage?.(message);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
-
-      websocket.onclose = (event) => {
-        console.log('WebSocket closed with code:', event.code);
-        setIsConnected(false);
-        setWs(null);
-
-        if (event.code === 1008) {
-          console.log('Server rejected connection - too many connections');
-          setIsRejected(true);
-          return;
-        }
-
-        // Only try to reconnect if we're not rejected and haven't exceeded max attempts
-        if (!isRejected && reconnectAttempts < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), reconnectInterval);
-          console.log(`Will try to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
-          setTimeout(() => {
-            setReconnectAttempts(prev => prev + 1);
-            connect();
-          }, delay);
-        }
-      };
-
-      websocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      setWs(websocket);
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-    }
-  }, [url, onMessage, reconnectAttempts, reconnectInterval, maxReconnectAttempts, ws, isRejected]);
+  // Create a stable listener function
+  const listener = useCallback((message: WebSocketMessage) => {
+    onMessageRef.current?.(message);
+  }, []);
 
   useEffect(() => {
-    connect();
+    if (!enabled) return;
+
+    // Add this component's listener to global set
+    globalListeners.add(listener);
+    
+    // Create connection if it doesn't exist
+    if (!connectionPromise) {
+      connectionPromise = createConnection(url);
+    }
+
+    // Wait for connection and update state
+    connectionPromise
+      .then((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          setIsConnected(true);
+          setReconnectAttempts(0);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to connect WebSocket:', error);
+        setIsConnected(false);
+      });
+
+    // Monitor connection state
+    const checkConnection = () => {
+      const isOpen = globalWebSocket?.readyState === WebSocket.OPEN;
+      setIsConnected(isOpen);
+    };
+
+    const interval = setInterval(checkConnection, 1000);
 
     return () => {
-      if (ws) {
-        ws.close();
+      // Remove listener when component unmounts
+      globalListeners.delete(listener);
+      clearInterval(interval);
+      
+      // Close connection if no listeners left
+      if (globalListeners.size === 0 && globalWebSocket) {
+        console.log('🔌 Closing WebSocket - no more listeners');
+        globalWebSocket.close();
+        globalWebSocket = null;
+        connectionPromise = null;
       }
     };
-  }, [connect, ws]);
+  }, [url, listener, enabled]);
 
   const sendMessage = useCallback((message: WebSocketMessage) => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(message));
+    if (globalWebSocket && globalWebSocket.readyState === WebSocket.OPEN) {
+      const messageWithTimestamp = {
+        ...message,
+        timestamp: Date.now()
+      };
+      globalWebSocket.send(JSON.stringify(messageWithTimestamp));
+      console.log('📤 Sent WebSocket message:', messageWithTimestamp);
     } else {
-      console.warn('WebSocket is not connected, message not sent:', message);
+      console.warn('⚠️ WebSocket not connected, message not sent:', message);
     }
-  }, [ws]);
+  }, []);
 
   return {
     isConnected,

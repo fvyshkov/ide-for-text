@@ -2,7 +2,7 @@ Hello, this is a test file for our Text IDE!
 
 You can edit this file to test the application.
 
-Features to test:
+Features to test:1
 - File tree navigation
 - Opening files
 - Editing content

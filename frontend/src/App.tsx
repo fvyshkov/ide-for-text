@@ -6,7 +6,7 @@ import TripleSplitter from './components/TripleSplitter';
 import AIChat from './components/AIChat';
 import { FileTreeItem, FileContent } from './types';
 import { useTheme } from './contexts/ThemeContext';
-// import { useWebSocket } from './hooks/useWebSocket';
+import { useWebSocket } from './hooks/useWebSocket';
 // Native directory picker functionality
 import { FaSun, FaMoon, FaFolder, FaSync } from 'react-icons/fa';
 
@@ -26,37 +26,26 @@ function App() {
     aiChatRef.current?.askQuestion(question);
   }, []);
 
-  // Handle WebSocket messages (disabled for now)
-  // const handleWebSocketMessage = useCallback((message: any) => {
-  //   if (message.type === 'file_updated') {
-  //     // File was updated externally
-  //     console.log('🔄 WebSocket file update:', message);
-  //     
-  //     // Only reload if it's our currently selected file
-  //     if (message.path === selectedFile) {
-  //       // Skip reload for now to avoid infinite loops
-  //       console.log('⚠️ Skipping WebSocket file reload to avoid loops');
-  //     }
-  //   } else if (message.type === 'file_changed') {
-  //     // File system change detected
-  //     console.log('File changed:', message.path);
-  //     
-  //     // Only refresh tree if change is in our current directory
-  //     if (rootPath && message.path.startsWith(rootPath)) {
-  //       console.log('Refreshing file tree due to changes');
-  //       // Будем обновлять дерево файлов позже, когда реализуем эту функцию
-  //     }
-  //   }
-  // }, [selectedFile, rootPath]);
+  // Define functions first to avoid hoisting issues
+  const loadFileContent = useCallback(async (filePath: string) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(filePath)}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-  // WebSocket connection temporarily disabled
-  // const { sendMessage } = useWebSocket({
-  //   url: 'ws://localhost:8001/ws',
-  //   onMessage: handleWebSocketMessage,
-  //   reconnectInterval: 3000,
-  //   maxReconnectAttempts: 5
-  // });
-  // const sendMessage = () => {}; // Placeholder (not needed anymore)
+      const content: FileContent = await response.json();
+      // File loaded successfully
+      setFileContent(content);
+    } catch (error) {
+      console.error('Error loading file content:', error);
+      alert('Error loading file content.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const loadDirectory = useCallback(async (directoryPath: string) => {
     console.log('Loading directory:', directoryPath);
@@ -89,7 +78,51 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [setIsLoading, setFileTree, setRootPath]);
+  }, []);
+
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback((message: any) => {
+    console.log('📨 Received WebSocket message:', message);
+    
+    if (message.type === 'file_changed') {
+      // External file system change detected
+      console.log('📁 File system change:', message.path);
+      
+      if (rootPath && message.path && message.path.startsWith(rootPath)) {
+        // Refresh file tree if change is in our current directory
+        console.log('🔄 Refreshing file tree due to external change');
+        loadDirectory(rootPath);
+      }
+      
+      // If the changed file is currently open, ask user if they want to reload
+      if (selectedFile && message.path === selectedFile) {
+        const shouldReload = window.confirm(
+          `File "${selectedFile}" was modified externally. Do you want to reload it? (This will discard unsaved changes)`
+        );
+        if (shouldReload) {
+          loadFileContent(selectedFile);
+        }
+      }
+    } else if (message.type === 'file_updated') {
+      // File was updated by another client/tab
+      console.log('🔄 File updated by another client:', message.path);
+      
+      // Only reload if it's our currently selected file and not sent by us
+      if (selectedFile && message.path === selectedFile && message.sender !== 'this-tab') {
+        console.log('↻ Reloading file content from another tab update');
+        loadFileContent(selectedFile);
+      }
+    }
+  }, [selectedFile, rootPath, loadDirectory, loadFileContent]);
+
+  // WebSocket connection for live updates
+  const { sendMessage } = useWebSocket({
+    url: 'ws://localhost:8001/ws',
+    onMessage: handleWebSocketMessage,
+    reconnectInterval: 3000,
+    maxReconnectAttempts: 5,
+    enabled: true
+  });
 
   const openDirectory = useCallback(async () => {
     try {
@@ -149,30 +182,10 @@ function App() {
     initializeDirectory();
   }, [loadDirectory]); // Include loadDirectory in dependencies
 
-  const loadFileContent = async (filePath: string) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(filePath)}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const content: FileContent = await response.json();
-      // File loaded successfully
-      setFileContent(content);
-    } catch (error) {
-      console.error('Error loading file content:', error);
-      alert('Error loading file content.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleFileSelect = useCallback((filePath: string) => {
     setSelectedFile(filePath);
     loadFileContent(filePath);
-  }, []);
+  }, [loadFileContent]);
 
   const handleFileContentChange = useCallback(async (newContent: string) => {
     if (!selectedFile) return;
@@ -197,18 +210,18 @@ function App() {
 
       // Don't update local state - let Monaco manage its own content
 
-      // Notify WebSocket (disabled for now)
-      // sendMessage({
-      //   type: 'file_update',
-      //   path: selectedFile,
-      //   content: newContent,
-      //   sender: 'frontend'
-      // });
+      // Notify other tabs/clients about file update
+      sendMessage({
+        type: 'file_updated',
+        path: selectedFile,
+        content: newContent,
+        sender: 'this-tab'
+      });
     } catch (error) {
       console.error('Error saving file:', error);
       alert('Error saving file.');
     }
-  }, [selectedFile]);
+  }, [selectedFile, sendMessage]);
 
 
 
