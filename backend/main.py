@@ -17,7 +17,7 @@ import pandas as pd
 import openpyxl
 
 # AI Agent import
-from ai_agent import get_ai_agent
+from ai_agent_v2 import get_ai_agent, clear_session
 # import magic  # Temporarily disabled due to libmagic dependency issues
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -196,6 +196,8 @@ class AIAnalysisRequest(BaseModel):
     query: str
     file_paths: Optional[List[str]] = None
     project_path: Optional[str] = None
+    session_id: Optional[str] = "default"
+    reset_context: Optional[bool] = False
 
 class FileWatcher(FileSystemEventHandler):
     """File system watcher for detecting changes on disk"""
@@ -663,11 +665,15 @@ async def analyze_with_ai(request: AIAnalysisRequest):
     Returns streaming response with real-time AI thinking process
     """
     try:
-        agent = get_ai_agent()
+        # Get session ID from request or use default
+        session_id = getattr(request, 'session_id', 'default')
+        reset_context = getattr(request, 'reset_context', False)
+        
+        agent = get_ai_agent(session_id)
         
         async def generate_stream():
             """Generate streaming response"""
-            async for thought in agent.analyze(request.query, request.project_path):
+            async for thought in agent.analyze(request.query, request.project_path, reset_context):
                 # Format as Server-Sent Events
                 data = json.dumps(thought)
                 yield f"data: {data}\n\n"
@@ -693,6 +699,15 @@ async def test_ai():
         return {"status": "ok", "message": "AI agent initialized successfully"}
     except Exception as e:
         return {"status": "error", "message": f"AI agent error: {str(e)}"}
+
+@app.post("/api/ai/clear-context")
+async def clear_ai_context(session_id: str = "default"):
+    """Clear AI conversation context for a session"""
+    try:
+        clear_session(session_id)
+        return {"status": "ok", "message": f"Context cleared for session: {session_id}"}
+    except Exception as e:
+        return {"status": "error", "message": f"Error clearing context: {str(e)}"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

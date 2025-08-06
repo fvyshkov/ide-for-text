@@ -13,8 +13,10 @@ from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 
-# Import data analysis tools
+# Import tools
 from tools.data_analysis import DataAnalysisTool
+from tools.file_operations import read_file_content, write_file_content, list_files_in_directory, get_file_info
+from tools.translation import translate_text, translate_file_content
 
 # Load environment variables from parent directory
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -60,32 +62,39 @@ class TransparentAIAgent:
             simple_calculator,
             DataAnalysisTool.analyze_data,
             DataAnalysisTool.query_data,
-            DataAnalysisTool.aggregate_data
+            DataAnalysisTool.aggregate_data,
+            read_file_content,
+            write_file_content,
+            list_files_in_directory,
+            get_file_info,
+            translate_text,
+            translate_file_content
         ])
         
         # Create transparent prompt
-        self.system_prompt = """You are a transparent AI assistant that ALWAYS explains your thinking process step by step, regardless of how the question is asked.
+        self.system_prompt = """You are a helpful AI assistant that can work with files and perform various tasks on a coding project. You have access to powerful tools for file operations, translation, and data analysis.
 
-For EVERY request, no matter how simple, you MUST:
-1. First explain what you understand from the user's request
-2. Share your plan of action and reasoning
-3. For calculations:
-   - Do ALL calculations yourself, showing each step
-   - Break down complex calculations into smaller parts
-   - Show your work clearly with proper formatting
-4. Always end with a clear, direct answer
+Available tools:
+- read_file_content: Read the content of any file in the project
+- write_file_content: Create or modify files with new content
+- list_files_in_directory: Browse directories to see what files are available
+- get_file_info: Get information about files (size, type, etc.)
+- translate_text: Translate text to different languages
+- translate_file_content: Translate entire files while preserving structure
 
-Remember:
-- Even for simple questions, show ALL your thinking
-- Break down your reasoning into clear steps
-- Be conversational and educational
-- Never skip steps, even if they seem obvious
-- For math problems:
-  * Show each step of your calculation
-  * Use proper alignment for multi-step calculations
-  * Format the final answer clearly: "The answer is: [result]"
-  * For decimal results, show up to 4 decimal places
-  * NEVER mention using any calculator or tools"""
+For file-related requests:
+1. First understand exactly what the user wants to do
+2. Plan your approach step by step
+3. Use the appropriate tools to read, analyze, or modify files
+4. Always explain what you're doing and why
+5. Show the results clearly
+
+For translation tasks:
+- When asked to translate a file, read it first, then translate the content
+- If asked to create a translated version "nearby" or "next to" the original, create it in the same directory with a clear naming convention (e.g., filename_russian.txt)
+- Preserve the original file structure and formatting
+
+Always be helpful, explain your process, and complete the requested tasks efficiently."""
     
     async def analyze(self, user_query: str, project_path: Optional[str] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -101,7 +110,7 @@ Remember:
             # Yield initial thinking message
             yield {
                 "type": "thinking_start",
-                "content": "🤔 Processing your request...",
+                "content": "Processing your request...",
                 "timestamp": time.time()
             }
             
@@ -116,12 +125,15 @@ Remember:
             # Yield understanding message
             yield {
                 "type": "thinking",
-                "content": f"📝 Understanding request: {user_query}",
+                "content": f"Understanding request: {user_query}",
                 "timestamp": time.time()
             }
             
             # Get response from Claude
             response = await self.llm_with_tools.ainvoke(messages)
+            
+            # Handle tool calls and potential follow-up responses
+            all_tool_results = []
             
             # Check if Claude wants to use tools
             if response.tool_calls:
@@ -129,7 +141,7 @@ Remember:
                     # Yield tool usage
                     yield {
                         "type": "tool_use",
-                        "content": f"🔧 Using tool: {tool_call['name']}",
+                        "content": f"Using tool: {tool_call['name']}",
                         "tool_input": tool_call['args'],
                         "timestamp": time.time()
                     }
@@ -144,18 +156,61 @@ Remember:
                         tool_result = DataAnalysisTool.query_data.invoke(tool_call['args'])
                     elif tool_call['name'] == 'aggregate_data':
                         tool_result = DataAnalysisTool.aggregate_data.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'read_file_content':
+                        tool_result = read_file_content.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'write_file_content':
+                        tool_result = write_file_content.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'list_files_in_directory':
+                        tool_result = list_files_in_directory.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'get_file_info':
+                        tool_result = get_file_info.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'translate_text':
+                        tool_result = translate_text.invoke(tool_call['args'])
+                    elif tool_call['name'] == 'translate_file_content':
+                        tool_result = translate_file_content.invoke(tool_call['args'])
                     
                     if tool_result:
                         yield {
                             "type": "tool_result",
-                            "content": f"✅ Tool result: {tool_result}",
+                            "content": f"Tool result: {tool_result}",
                             "timestamp": time.time()
                         }
+                        all_tool_results.append({
+                            "tool_call_id": tool_call.get('id', ''),
+                            "tool_name": tool_call['name'],
+                            "content": str(tool_result)
+                        })
+                
+                # If there were tool calls, we need to get the final response
+                if all_tool_results:
+                    # Create proper tool messages for the conversation
+                    from langchain_core.messages import AIMessage, ToolMessage
+                    
+                    # Add assistant message with tool calls
+                    messages.append(response)
+                    
+                    # Add tool results as proper ToolMessage objects
+                    for tool_result in all_tool_results:
+                        tool_msg = ToolMessage(
+                            content=tool_result["content"],
+                            tool_call_id=tool_result["tool_call_id"]
+                        )
+                        messages.append(tool_msg)
+                    
+                    # Get the final response from Claude after tool execution
+                    yield {
+                        "type": "thinking",
+                        "content": "Processing tool results and generating final response...",
+                        "timestamp": time.time()
+                    }
+                    
+                    final_response = await self.llm_with_tools.ainvoke(messages)
+                    response = final_response  # Use the final response for content extraction
             
             # Yield completion
             yield {
                 "type": "thinking_complete",
-                "content": "🎯 Analysis completed!",
+                "content": "Analysis completed!",
                 "timestamp": time.time()
             }
             

@@ -1,0 +1,13 @@
+Hello World!
+
+This is a sample English text file that we will use to test our AI agent's translation capabilities.
+
+The file contains:
+- Simple greetings
+- Multiple paragraphs
+- A list of items
+- Various sentence structures
+
+Our AI should be able to read this file, translate it to Russian, and create a new file with the translated content while preserving the original structure and formatting.
+
+This is a great test case for file operations and translation functionality!
