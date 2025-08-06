@@ -1,12 +1,27 @@
 Hello, this is a test file for our Text IDE!
 
 You can edit this file to test the application.
-
-Features to test:1
+Features to test:12111+++++
 - File tree navigation
 - Opening files
 - Editing content
 - Auto-saving
 - Real-time synchronization
 
-Try making some changes here and see if they save automatically!
+Try making some changes here and see if they save automatically!Тестирую изменение файла
+Тест FileWatcher Mon Aug  4 10:52:21 IDT 2025
+Test from terminal Mon Aug  4 10:58:04 IDT 2025
+Test FileWatcher Mon Aug  4 10:59:11 IDT 2025
+Test external change Mon Aug  4 11:04:36 IDT 2025
+Test external change from terminal Mon Aug  4 11:14:58 IDT 2025
+New external change Mon Aug  4 11:28:39 IDT 2025
+Test after restart Mon Aug  4 11:53:48 IDT 2025
+Test with debug logging Mon Aug  4 11:58:22 IDT 2025
+Test WebSocket connection Mon Aug  4 12:52:11 IDT 2025
+Test final fix Mon Aug  4 13:04:24 IDT 2025
+Final test Mon Aug  4 13:05:24 IDT 2025
+Test FileWatcher: Wed Aug  6 16:55:53 IDT 2025
+Test after fix: Wed Aug  6 16:57:05 IDT 2025
+Test FileWatcher NOW: Wed Aug  6 16:57:49 IDT 2025
+Final test: Wed Aug  6 16:58:20 IDT 2025
+Test after event loop fix: Wed Aug  6 17:00:29 IDT 2025

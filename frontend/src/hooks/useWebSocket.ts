@@ -39,16 +39,22 @@ const createConnection = async (url: string): Promise<WebSocket> => {
 
     ws.onmessage = (event) => {
       try {
+        console.log('🎯 Raw WebSocket message received:', event.data);
         const message = JSON.parse(event.data);
+        console.log('🎯 Parsed WebSocket message:', message);
+        console.log('🎯 Number of listeners:', globalListeners.size);
         // Broadcast to all listeners
-        globalListeners.forEach(listener => listener(message));
+        globalListeners.forEach((listener, index) => {
+          console.log(`🎯 Calling listener ${index}`);
+          listener(message);
+        });
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
       }
     };
 
     ws.onclose = (event) => {
-      console.log('❌ WebSocket disconnected, code:', event.code);
+      console.log('❌ WebSocket disconnected, code:', event.code, 'reason:', event.reason);
       globalWebSocket = null;
       connectionPromise = null;
       
@@ -60,15 +66,16 @@ const createConnection = async (url: string): Promise<WebSocket> => {
 
       // Auto-reconnect after a delay if there are active listeners
       if (globalListeners.size > 0) {
+        console.log('🔄 Will auto-reconnect WebSocket in 2 seconds...');
         setTimeout(() => {
           console.log('🔄 Auto-reconnecting WebSocket...');
           connectionPromise = createConnection(url);
-        }, 3000);
+        }, 2000);
       }
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('❌ WebSocket error:', error);
       reject(error);
     };
   });
@@ -81,6 +88,7 @@ export const useWebSocket = ({
   maxReconnectAttempts = 5,
   enabled = true
 }: UseWebSocketOptions) => {
+  console.log('🔌 useWebSocket called with:', { url, enabled, onMessage: !!onMessage });
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const onMessageRef = useRef(onMessage);
@@ -96,14 +104,22 @@ export const useWebSocket = ({
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    console.log('🔌 useWebSocket useEffect, enabled:', enabled);
+    if (!enabled) {
+      console.log('🔌 useWebSocket disabled, returning');
+      return;
+    }
 
     // Add this component's listener to global set
+    console.log('🔌 Adding listener to global set, current size:', globalListeners.size);
     globalListeners.add(listener);
     
     // Create connection if it doesn't exist
     if (!connectionPromise) {
+      console.log('🔌 Creating new connection promise');
       connectionPromise = createConnection(url);
+    } else {
+      console.log('🔌 Connection promise already exists');
     }
 
     // Wait for connection and update state
@@ -151,9 +167,15 @@ export const useWebSocket = ({
       globalWebSocket.send(JSON.stringify(messageWithTimestamp));
       console.log('📤 Sent WebSocket message:', messageWithTimestamp);
     } else {
-      console.warn('⚠️ WebSocket not connected, message not sent:', message);
+      console.warn('⚠️ WebSocket not connected (state:', globalWebSocket?.readyState, '), message not sent:', message);
+      
+      // Try to reconnect if not connected
+      if (!connectionPromise) {
+        console.log('🔄 Attempting to reconnect WebSocket...');
+        connectionPromise = createConnection(url);
+      }
     }
-  }, []);
+  }, [url]);
 
   return {
     isConnected,

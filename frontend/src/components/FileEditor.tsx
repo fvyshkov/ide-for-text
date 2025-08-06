@@ -9,9 +9,10 @@ interface FileEditorProps {
   onContentChange: (content: string) => void;
   isLoading: boolean;
   onAskAI?: (question: string) => void;
+  onUpdateContentRef?: (updateFn: (content: string) => void) => void;
 }
 
-const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, isLoading, onAskAI }) => {
+const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, isLoading, onAskAI, onUpdateContentRef }) => {
   const { theme } = useTheme();
   const editorRef = useRef<any>(null);
   const currentFilePathRef = useRef<string | null>(null);
@@ -77,6 +78,48 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
       onContentChange(value);
     }
   };
+
+  // Function to update content without losing cursor position
+  const updateContentWithoutFocus = (newContent: string) => {
+    if (editorRef.current) {
+      const editor = editorRef.current;
+      const currentPosition = editor.getPosition();
+      const currentSelection = editor.getSelection();
+      
+      // Update the content
+      editor.setValue(newContent);
+      
+      // Restore cursor position and selection if they're still valid
+      if (currentPosition) {
+        const model = editor.getModel();
+        if (model) {
+          const lineCount = model.getLineCount();
+          const validPosition = {
+            lineNumber: Math.min(currentPosition.lineNumber, lineCount),
+            column: Math.min(currentPosition.column, model.getLineMaxColumn(Math.min(currentPosition.lineNumber, lineCount)))
+          };
+          editor.setPosition(validPosition);
+          
+          if (currentSelection) {
+            const validSelection = {
+              startLineNumber: Math.min(currentSelection.startLineNumber, lineCount),
+              startColumn: Math.min(currentSelection.startColumn, model.getLineMaxColumn(Math.min(currentSelection.startLineNumber, lineCount))),
+              endLineNumber: Math.min(currentSelection.endLineNumber, lineCount),
+              endColumn: Math.min(currentSelection.endColumn, model.getLineMaxColumn(Math.min(currentSelection.endLineNumber, lineCount)))
+            };
+            editor.setSelection(validSelection);
+          }
+        }
+      }
+    }
+  };
+
+  // Provide the update function to parent component
+  useEffect(() => {
+    if (onUpdateContentRef) {
+      onUpdateContentRef(updateContentWithoutFocus);
+    }
+  }, [onUpdateContentRef]);
 
   if (isLoading) {
     return (

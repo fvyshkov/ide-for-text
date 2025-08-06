@@ -33,6 +33,29 @@ except ImportError:
 
 app = FastAPI(title="Text IDE Backend", version="1.0.0")
 
+@app.on_event("startup")
+async def startup_event():
+    """Set up event loop for FileWatcher and start watching"""
+    global global_event_loop
+    global_event_loop = asyncio.get_running_loop()
+    file_watcher.loop = global_event_loop
+    print(f"✅ Global event loop set for FileWatcher: {global_event_loop}")
+    
+    # Start file watcher after event loop is set
+    print("🚀 Starting file watcher...")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    test_dir = os.path.join(parent_dir, "test-directory")
+    
+    if os.path.exists(test_dir):
+        print(f"📁 Adding {test_dir} to file watcher")
+        observer.schedule(file_watcher, test_dir, recursive=True)
+        file_watcher.watched_paths.add(test_dir)
+        observer.start()
+        print("✅ File watcher started!")
+    else:
+        print(f"⚠️ Test directory not found: {test_dir}")
+
 # CORS middleware for frontend communication
 app.add_middleware(
     CORSMiddleware,
@@ -65,28 +88,57 @@ class WebSocketConnection:
 
 websocket_connections: Dict[str, WebSocketConnection] = {}
 MAX_WEBSOCKET_CONNECTIONS = 10  # Increased for multiple tabs
-print("WebSocket connections cleared on startup")
 
-async def broadcast_to_websockets(message: dict):
+async def broadcast_to_websockets(message: dict, exclude_client: str = None):
     """Broadcast message to all connected WebSocket clients"""
     if not websocket_connections:
+        print("📡 No WebSocket connections to broadcast to")
         return
         
-    print(f"📡 Broadcasting to {len(websocket_connections)} clients: {message}")
+    # Don't send file content in broadcast (too much data)
+    broadcast_message = {
+        "type": message.get("type"),
+        "path": message.get("path"),
+        "timestamp": message.get("timestamp", time.time()),
+        "sender": message.get("sender")
+    }
     
-    # Send to all connections
+    # Count clients excluding the sender
+    target_clients = {cid: conn for cid, conn in websocket_connections.items() if cid != exclude_client}
+    
+    if not target_clients:
+        print("📡 No other clients to broadcast to (excluding sender)")
+        return
+        
+    print(f"📡 Broadcasting to {len(target_clients)} clients (excluding {exclude_client}): {broadcast_message}")
+    
+    # Send to all connections except excluded
     dead_connections = []
-    for client_id, conn in websocket_connections.items():
+    print(f"📊 Iterating over {len(target_clients)} target connections")
+    
+    # Create a copy to avoid modification during iteration
+    connections_copy = list(target_clients.items())
+    
+    for client_id, conn in connections_copy:
         try:
-            await conn.websocket.send_text(json.dumps(message))
+            print(f"🔍 Processing connection {client_id}, type: {type(conn)}")
+            if not hasattr(conn, 'websocket'):
+                print(f"⚠️ Connection {client_id} has no websocket attribute")
+                dead_connections.append(client_id)
+                continue
+                
+            await conn.websocket.send_text(json.dumps(broadcast_message))
+            print(f"✅ Sent to {client_id}")
         except Exception as e:
-            print(f"Failed to send to {client_id}: {e}")
+            print(f"❌ Failed to send to {client_id}: {e}")
+            import traceback
+            traceback.print_exc()
             dead_connections.append(client_id)
     
     # Clean up dead connections
     for client_id in dead_connections:
         websocket_connections.pop(client_id, None)
-        print(f"Removed dead connection: {client_id}")
+        print(f"🗑️ Removed dead connection: {client_id}")
 
 async def cleanup_old_connections():
     """Remove disconnected connections"""
@@ -94,14 +146,27 @@ async def cleanup_old_connections():
     current_time = time.time()
     to_remove = []
     
-    for client_id, conn in websocket_connections.items():
-        # Remove connections that haven't received a ping in 30 seconds
-        if current_time - conn.last_ping > 30:
-            print(f"Connection {client_id} timed out")
-            to_remove.append(client_id)
-            await conn.close()
-        elif not await conn.send_ping():
-            print(f"Connection {client_id} is dead")
+    # Create a copy of items to avoid modification during iteration
+    connections_copy = list(websocket_connections.items())
+    
+    for client_id, conn in connections_copy:
+        try:
+            # Check if connection still exists and is valid
+            if not hasattr(conn, 'websocket') or not hasattr(conn, 'last_ping'):
+                print(f"⚠️ Invalid connection object for {client_id}")
+                to_remove.append(client_id)
+                continue
+                
+            # Remove connections that haven't received a ping in 30 seconds
+            if current_time - conn.last_ping > 30:
+                print(f"Connection {client_id} timed out")
+                to_remove.append(client_id)
+                await conn.close()
+            elif not await conn.send_ping():
+                print(f"Connection {client_id} is dead")
+                to_remove.append(client_id)
+        except Exception as e:
+            print(f"Error checking connection {client_id}: {e}")
             to_remove.append(client_id)
     
     # Remove dead connections
@@ -135,41 +200,110 @@ class FileWatcher(FileSystemEventHandler):
     
     def __init__(self):
         self.watched_paths = set()
-        self.last_event_time = {}  # To prevent duplicate events
+        self.last_event_time = {}  # To prevent duplicate events  
+        self.recently_saved_by_web = {}  # Track files saved by web app
+        self.loop = None  # Will be set when event loop is available
     
-    async def on_modified(self, event):
+    def on_modified(self, event):
         if event.is_directory:
+            return
+        
+        file_path = event.src_path
+        
+        # Ignore if this file was recently saved by web app
+        if self.is_recently_web_saved(file_path):
+            print(f"🔇 Ignoring FileWatcher event for web-saved file: {file_path}")
             return
             
         # Prevent duplicate events (filesystem can fire multiple events for one change)
         current_time = time.time()
-        if event.src_path in self.last_event_time:
-            if current_time - self.last_event_time[event.src_path] < 0.5:  # 500ms debounce
+        if file_path in self.last_event_time:
+            if current_time - self.last_event_time[file_path] < 0.5:  # 500ms debounce
                 return
         
-        self.last_event_time[event.src_path] = current_time
+        self.last_event_time[file_path] = current_time
         
-        print(f"📁 File changed externally: {event.src_path}")
+        print(f"📁 External file change detected: {file_path}")
         
-        # Notify all connected clients about file change
+        # Notify all connected clients about external file change
         message = {
             "type": "file_changed",
-            "path": event.src_path,
-            "timestamp": current_time
+            "path": file_path,
+            "timestamp": current_time,
+            "source": "external"  # Mark as external change
         }
-        await broadcast_to_websockets(message)
+        
+        # Schedule the coroutine in the main event loop
+        # FileWatcher runs in a separate thread, so we need to use the global event loop
+        if global_event_loop and not global_event_loop.is_closed():
+            try:
+                asyncio.run_coroutine_threadsafe(broadcast_to_websockets(message), global_event_loop)
+                print("✅ File change broadcasted successfully via global event loop")
+            except Exception as e:
+                print(f"⚠️ Error broadcasting file change: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"⚠️ No event loop available for broadcasting (global_event_loop: {global_event_loop})")
     
     def on_created(self, event):
         if not event.is_directory:
-            asyncio.create_task(self.on_modified(event))
+            self.on_modified(event)
     
     def on_deleted(self, event):
         if not event.is_directory:
-            asyncio.create_task(self.on_modified(event))
+            # For deleted files, always notify (no web app involvement in deletion)
+            print(f"📁 File deleted externally: {event.src_path}")
+            message = {
+                "type": "file_deleted", 
+                "path": event.src_path,
+                "timestamp": time.time(),
+                "source": "external"
+            }
+            # Schedule the coroutine in the main event loop
+            # FileWatcher runs in a separate thread, so we need to use the global event loop
+            if global_event_loop and not global_event_loop.is_closed():
+                try:
+                    asyncio.run_coroutine_threadsafe(broadcast_to_websockets(message), global_event_loop)
+                    print("✅ File deletion broadcasted via global event loop")
+                except Exception as e:
+                    print(f"⚠️ Error broadcasting file deletion: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"⚠️ No event loop available for broadcasting deletion (global_event_loop: {global_event_loop})")
     
     def on_moved(self, event):
         if not event.is_directory:
-            asyncio.create_task(self.on_modified(event))
+            self.on_modified(event)
+    
+    def mark_as_web_saved(self, file_path: str):
+        """Mark file as recently saved by web app to ignore next FileWatcher event"""
+        current_time = time.time()
+        self.recently_saved_by_web[file_path] = current_time
+        print(f"🔖 Marked as web-saved: {file_path}")
+    
+    def is_recently_web_saved(self, file_path: str) -> bool:
+        """Check if file was recently saved by web app (within 2 seconds)"""
+        if file_path not in self.recently_saved_by_web:
+            return False
+        
+        current_time = time.time()
+        save_time = self.recently_saved_by_web[file_path]
+        
+        # Clean up old entries (older than 5 seconds)
+        if current_time - save_time > 5.0:
+            del self.recently_saved_by_web[file_path]
+            return False
+        
+        # Check if within 2 second window
+        return current_time - save_time < 2.0
+
+# Global event loop for FileWatcher
+import threading
+import multiprocessing
+global_event_loop = None
+global_event_loop_lock = threading.Lock()
 
 # Global file watcher
 file_watcher = FileWatcher()
@@ -233,20 +367,7 @@ def build_file_tree(directory: str, max_depth: int = 10, current_depth: int = 0)
     
     return items
 
-async def broadcast_to_websockets(message: Dict[str, Any]):
-    """Broadcast message to all connected WebSocket clients"""
-    await cleanup_old_connections()
-    
-    if not websocket_connections:
-        return
-    
-    message_str = json.dumps(message)
-    
-    for websocket, _ in websocket_connections:
-        try:
-            await websocket.send_text(message_str)
-        except:
-            pass  # Connection will be cleaned up in next cleanup_old_connections call
+
 
 @app.get("/")
 async def root():
@@ -342,12 +463,10 @@ async def write_file(request: WriteFileRequest):
         
         print(f"✅ File saved successfully: {request.path}")
         
-        # Notify WebSocket clients about file change
-        await broadcast_to_websockets({
-            "type": "file_updated",
-            "path": request.path,
-            "content": request.content
-        })
+        # Mark file as saved by web app to prevent FileWatcher false positives
+        print(f"🔍 Calling mark_as_web_saved for: {request.path}")
+        file_watcher.mark_as_web_saved(request.path)
+        print(f"✅ mark_as_web_saved completed")
         
         return {"success": True, "message": "File saved successfully"}
     except Exception as e:
@@ -470,8 +589,10 @@ async def test_ai():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time file synchronization"""
+    print("🔌 WebSocket connection attempt...")
     # Generate unique client ID based on remote address and a random component
     client_id = f"{websocket.client.host}:{websocket.client.port}:{id(websocket)}"
+    print(f"🔌 Client ID: {client_id}")
     
     # Run cleanup before accepting new connection
     await cleanup_old_connections()
@@ -483,7 +604,22 @@ async def websocket_endpoint(websocket: WebSocket):
         return
     
     # Accept the connection
+    print("🔌 Accepting WebSocket connection...")
     await websocket.accept()
+    print("✅ WebSocket connection accepted!")
+    
+    # Set global event loop for FileWatcher
+    global global_event_loop
+    with global_event_loop_lock:
+        print(f"🔍 Current global_event_loop: {global_event_loop}")
+        if global_event_loop is None:
+            try:
+                global_event_loop = asyncio.get_event_loop()
+                print(f"✅ Global event loop set for FileWatcher via WebSocket: {global_event_loop}")
+            except Exception as e:
+                print(f"❌ Error setting global event loop: {e}")
+        else:
+            print(f"ℹ️ Global event loop already set for FileWatcher: {global_event_loop}")
     
     # Create new connection object
     conn = WebSocketConnection(websocket, client_id)
@@ -506,31 +642,31 @@ async def websocket_endpoint(websocket: WebSocket):
                 if message.get("type") == "pong":
                     conn.last_ping = time.time()
                     continue
-                elif message.get("type") == "file_updated":
-                    # File was updated by a client, broadcast to others
+                elif message.get("type") == "sync_tabs":
+                    # Simple tab-to-tab synchronization (manual trigger)
                     file_path = message.get("path")
                     if file_path:
-                        print(f"🔄 Broadcasting file update: {file_path}")
+                        print(f"🔄 Tab sync request for: {file_path}")
                         await broadcast_to_websockets({
-                            "type": "file_updated",
+                            "type": "sync_tabs",
                             "path": file_path,
-                            "content": message.get("content"),
-                            "sender": message.get("sender", "unknown"),
-                            "timestamp": message.get("timestamp", time.time())
-                        })
+                            "timestamp": time.time()
+                        }, exclude_client=client_id)  # Don't send back to sender
                 
             except WebSocketDisconnect:
                 print(f"WebSocket disconnected: {client_id}")
                 break
             except Exception as e:
                 print(f"Error processing message from {client_id}: {e}")
+                import traceback
+                traceback.print_exc()
                 break
                 
     finally:
         # Clean up on exit
         if client_id in websocket_connections:
             await websocket_connections[client_id].close()
-            del websocket_connections[client_id]
+            websocket_connections.pop(client_id, None)
         print(f"Connection closed: {client_id}")
     
 
@@ -539,15 +675,11 @@ if __name__ == "__main__":
     import uvicorn
     
     print("Starting Text IDE Backend...")
-    print("Starting file watcher...")
-    
-    # Start file watcher
-    observer.start()
     
     print("Starting uvicorn server on port 8001...")
     
     try:
-        uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+        uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=False)
     except KeyboardInterrupt:
         print("Stopping server...")
         observer.stop()

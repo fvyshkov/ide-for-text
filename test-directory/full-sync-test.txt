@@ -1,0 +1,16 @@
+=== Full Sync Test File ===
+Created: 2025-08-06 16:51:21
+
+[16:51:22] Disk change 1
+[16:51:24.930] Rapid change 1
+[16:51:25.435] Rapid change 2
+[16:51:25.940] Rapid change 3
+
+==================================================
+Large content block:
+  Line 1: Lorem ipsum dolor sit amet...
+  Line 2: Lorem ipsum dolor sit amet...
+  Line 3: Lorem ipsum dolor sit amet...
+  Line 4: Lorem ipsum dolor sit amet...
+  Line 5: Lorem ipsum dolor sit amet...
+==================================================

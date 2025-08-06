@@ -13,21 +13,30 @@ import { FaSun, FaMoon, FaFolder, FaSync } from 'react-icons/fa';
 const API_BASE_URL = 'http://localhost:8001';
 
 function App() {
+  console.log('🚀 App component rendering...');
   const { theme, toggleTheme } = useTheme();
+  const [tabId] = useState(() => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   const [fileTree, setFileTree] = useState<FileTreeItem[]>([]);
   const [rootPath, setRootPath] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const aiChatRef = useRef<any>(null);
+  const updateEditorContentRef = useRef<((content: string) => void) | null>(null);
 
   // Function to ask AI a question
   const askAI = useCallback((question: string) => {
     aiChatRef.current?.askQuestion(question);
   }, []);
 
+  // Function to receive update content ref from FileEditor
+  const handleUpdateContentRef = useCallback((updateFn: (content: string) => void) => {
+    updateEditorContentRef.current = updateFn;
+  }, []);
+
   // Define functions first to avoid hoisting issues
   const loadFileContent = useCallback(async (filePath: string) => {
+    console.log('📖 Loading file content:', filePath);
     setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(filePath)}`);
@@ -37,10 +46,11 @@ function App() {
       }
 
       const content: FileContent = await response.json();
+      console.log('✅ File content loaded, length:', content.content.length);
       // File loaded successfully
       setFileContent(content);
     } catch (error) {
-      console.error('Error loading file content:', error);
+      console.error('❌ Error loading file content:', error);
       alert('Error loading file content.');
     } finally {
       setIsLoading(false);
@@ -81,12 +91,13 @@ function App() {
   }, []);
 
   // Handle WebSocket messages
-  const handleWebSocketMessage = useCallback((message: any) => {
+  const handleWebSocketMessage = useCallback(async (message: any) => {
     console.log('📨 Received WebSocket message:', message);
+    console.log('🔍 Current selectedFile:', selectedFile);
+    console.log('🔍 Message sender:', message.sender);
     
     if (message.type === 'file_changed') {
-      // External file system change detected
-      console.log('📁 File system change:', message.path);
+      console.log('📁 File change detected:', message);
       
       if (rootPath && message.path && message.path.startsWith(rootPath)) {
         // Refresh file tree if change is in our current directory
@@ -94,26 +105,80 @@ function App() {
         loadDirectory(rootPath);
       }
       
-      // If the changed file is currently open, ask user if they want to reload
+      // If the changed file is currently open, auto-reload it
       if (selectedFile && message.path === selectedFile) {
-        const shouldReload = window.confirm(
-          `File "${selectedFile}" was modified externally. Do you want to reload it? (This will discard unsaved changes)`
-        );
-        if (shouldReload) {
+        console.log('🔄 File changed, auto-reloading:', message.source === 'external' ? 'external change' : 'internal change');
+        
+        // Always use smart update to preserve cursor position
+        if (updateEditorContentRef.current) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(selectedFile)}`);
+            if (response.ok) {
+              const content: FileContent = await response.json();
+              console.log('✅ Smart sync: preserving cursor position');
+              updateEditorContentRef.current(content.content);
+              setFileContent(content); // Update state for other components
+            } else {
+              throw new Error('Failed to fetch updated content');
+            }
+          } catch (error) {
+            console.warn('⚠️ Smart sync failed, falling back to full reload:', error);
+            loadFileContent(selectedFile);
+          }
+        } else {
+          // Fallback to full reload if smart update not available
           loadFileContent(selectedFile);
         }
       }
-    } else if (message.type === 'file_updated') {
-      // File was updated by another client/tab
-      console.log('🔄 File updated by another client:', message.path);
+    } else if (message.type === 'sync_tabs') {
+      console.log('🔄 Tab sync requested:', message.path);
       
-      // Only reload if it's our currently selected file and not sent by us
-      if (selectedFile && message.path === selectedFile && message.sender !== 'this-tab') {
-        console.log('↻ Reloading file content from another tab update');
-        loadFileContent(selectedFile);
+      // If synced file is currently open, auto-reload with smart update
+      if (selectedFile && message.path === selectedFile) {
+        console.log('🔄 Syncing file content from another tab');
+        
+        // Try to use smart update first (preserves cursor position)
+        if (updateEditorContentRef.current) {
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(selectedFile)}`);
+            if (response.ok) {
+              const content: FileContent = await response.json();
+              console.log('✅ Smart sync: preserving cursor position');
+              updateEditorContentRef.current(content.content);
+              setFileContent(content); // Update state for other components
+            } else {
+              throw new Error('Failed to fetch updated content');
+            }
+          } catch (error) {
+            console.warn('⚠️ Smart sync failed, falling back to full reload:', error);
+            loadFileContent(selectedFile);
+          }
+        } else {
+          // Fallback to full reload
+          loadFileContent(selectedFile);
+        }
       }
+    } else if (message.type === 'file_deleted') {
+      console.log('🗑️ File deleted externally:', message.path);
+      
+      if (rootPath && message.path && message.path.startsWith(rootPath)) {
+        // Refresh file tree
+        console.log('🔄 Refreshing file tree due to file deletion');
+        loadDirectory(rootPath);
+      }
+      
+      // If deleted file is currently open, notify user
+      if (selectedFile && message.path === selectedFile) {
+        alert(`File "${selectedFile}" was deleted externally.`);
+        // Clear the selected file
+        setSelectedFile(null);
+        setFileContent(null);
+      }
+    } else if (message.type === 'file_updated') {
+      // This type is no longer used - we rely on file_changed from FileWatcher instead
+      console.log('📝 Ignoring file_updated message - using FileWatcher instead');
     }
-  }, [selectedFile, rootPath, loadDirectory, loadFileContent]);
+  }, [selectedFile, rootPath, loadDirectory, loadFileContent, tabId]);
 
   // WebSocket connection for live updates
   const { sendMessage } = useWebSocket({
@@ -210,18 +275,13 @@ function App() {
 
       // Don't update local state - let Monaco manage its own content
 
-      // Notify other tabs/clients about file update
-      sendMessage({
-        type: 'file_updated',
-        path: selectedFile,
-        content: newContent,
-        sender: 'this-tab'
-      });
+      // Note: For now, no automatic tab sync to prevent spam
+      // TODO: Add manual sync button or intelligent sync later
     } catch (error) {
       console.error('Error saving file:', error);
       alert('Error saving file.');
     }
-  }, [selectedFile, sendMessage]);
+  }, [selectedFile, sendMessage, tabId]);
 
 
 
@@ -233,9 +293,10 @@ function App() {
         onContentChange={handleFileContentChange}
         isLoading={isLoading}
         onAskAI={askAI}
+        onUpdateContentRef={handleUpdateContentRef}
       />
     </div>
-  ), [fileContent, handleFileContentChange, isLoading, askAI]);
+  ), [fileContent, handleFileContentChange, isLoading, askAI, handleUpdateContentRef]);
 
   // Left panel: File tree
   const leftPanel = useMemo(() => {
