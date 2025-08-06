@@ -202,11 +202,30 @@
 }
 
 /* Monaco editor specific adjustments */
-.editor-container .monaco-editor {
+
+/* Light theme Monaco editor */
+[data-theme="light"] .editor-container .monaco-editor {
+  background-color: #ffffff !important;
+}
+
+[data-theme="light"] .editor-container .monaco-editor .margin {
+  background-color: #f8f9fa !important;
+}
+
+[data-theme="light"] .editor-container .monaco-editor .line-numbers {
+  color: #6c757d !important;
+}
+
+[data-theme="light"] .editor-container .monaco-editor .margin-view-overlays {
+  background-color: #f8f9fa !important;
+}
+
+/* Dark theme Monaco editor */
+[data-theme="dark"] .editor-container .monaco-editor {
   background-color: #1e1e1e !important;
 }
 
-.editor-container .monaco-editor .margin {
+[data-theme="dark"] .editor-container .monaco-editor .margin {
   background-color: #1e1e1e !important;
 }
 
