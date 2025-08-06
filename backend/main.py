@@ -17,7 +17,7 @@ import pandas as pd
 import openpyxl
 
 # AI Agent import
-from ai_agent_v2 import get_ai_agent, clear_session
+from ai_agent import get_ai_agent, clear_session
 # import magic  # Temporarily disabled due to libmagic dependency issues
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
