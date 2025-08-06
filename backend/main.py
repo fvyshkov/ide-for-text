@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import aiofiles
+import pandas as pd
+import openpyxl
 
 # AI Agent import
 from ai_agent import get_ai_agent
@@ -341,6 +343,69 @@ def is_text_file(file_path: str) -> bool:
     except (UnicodeDecodeError, PermissionError):
         return False
 
+def is_excel_file(file_path: str) -> bool:
+    """Check if file is an Excel file"""
+    file_extension = os.path.splitext(file_path)[1].lower()
+    return file_extension in ['.xlsx', '.xls', '.xlsm', '.xlsb']
+
+def is_csv_file(file_path: str) -> bool:
+    """Check if file is a CSV file"""
+    file_extension = os.path.splitext(file_path)[1].lower()
+    return file_extension == '.csv'
+
+def read_excel_file(file_path: str) -> dict:
+    """Read Excel file and convert to JSON format"""
+    try:
+        # Read Excel file
+        excel_file = pd.ExcelFile(file_path)
+        sheets_data = {}
+        
+        for sheet_name in excel_file.sheet_names:
+            df = pd.read_excel(file_path, sheet_name=sheet_name)
+            # Replace NaN with None for JSON serialization
+            df = df.where(pd.notnull(df), None)
+            # Convert to dict format
+            sheets_data[sheet_name] = {
+                'columns': df.columns.tolist(),
+                'data': df.values.tolist()
+            }
+        
+        return {
+            'type': 'excel',
+            'sheets': sheets_data,
+            'sheet_names': excel_file.sheet_names
+        }
+    except Exception as e:
+        raise Exception(f"Error reading Excel file: {str(e)}")
+
+def read_csv_file(file_path: str) -> dict:
+    """Read CSV file and convert to JSON format"""
+    try:
+        # Try to read with different encodings
+        encodings = ['utf-8', 'latin-1', 'cp1252']
+        df = None
+        
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(file_path, encoding=encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if df is None:
+            raise Exception("Could not decode CSV file with any common encoding")
+        
+        # Replace NaN with None for JSON serialization
+        df = df.where(pd.notnull(df), None)
+        
+        return {
+            'type': 'csv',
+            'columns': df.columns.tolist(),
+            'data': df.values.tolist()
+        }
+    except Exception as e:
+        raise Exception(f"Error reading CSV file: {str(e)}")
+
 def build_file_tree(directory: str, max_depth: int = 10, current_depth: int = 0) -> List[FileTreeItem]:
     """Build file tree structure from directory"""
     if current_depth >= max_depth:
@@ -424,7 +489,7 @@ async def open_directory(request: OpenDirectoryRequest):
 
 @app.get("/api/file-content")
 async def get_file_content(path: str):
-    """Get file content (text or binary indicator)"""
+    """Get file content (text, Excel, CSV or binary indicator)"""
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -432,7 +497,26 @@ async def get_file_content(path: str):
         raise HTTPException(status_code=400, detail="Path is a directory")
     
     try:
-        if is_text_file(path):
+        # Check if it's an Excel file
+        if is_excel_file(path):
+            excel_data = read_excel_file(path)
+            return {
+                "path": path,
+                "content": json.dumps(excel_data),
+                "is_binary": False,
+                "file_type": "excel"
+            }
+        # Check if it's a CSV file
+        elif is_csv_file(path):
+            csv_data = read_csv_file(path)
+            return {
+                "path": path,
+                "content": json.dumps(csv_data),
+                "is_binary": False,
+                "file_type": "csv"
+            }
+        # Check if it's a text file
+        elif is_text_file(path):
             async with aiofiles.open(path, mode='r', encoding='utf-8') as f:
                 content = await f.read()
             return FileContent(path=path, content=content, is_binary=False)
@@ -457,7 +541,31 @@ async def write_file(request: WriteFileRequest):
             os.makedirs(dir_path, exist_ok=True)
             print(f"✅ Directory created/exists: {dir_path}")
         
-        # Write file
+        # Check if this is Excel/CSV data
+        try:
+            data = json.loads(request.content)
+            if isinstance(data, dict) and 'type' in data:
+                if data['type'] == 'excel' and 'sheets' in data:
+                    # Save as Excel file
+                    with pd.ExcelWriter(request.path, engine='openpyxl') as writer:
+                        for sheet_name, sheet_data in data['sheets'].items():
+                            df = pd.DataFrame(sheet_data['data'], columns=sheet_data['columns'])
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    print(f"✅ Excel file saved successfully: {request.path}")
+                    file_watcher.mark_as_web_saved(request.path)
+                    return {"success": True, "message": "Excel file saved successfully"}
+                elif data['type'] == 'csv':
+                    # Save as CSV file
+                    df = pd.DataFrame(data['data'], columns=data['columns'])
+                    df.to_csv(request.path, index=False)
+                    print(f"✅ CSV file saved successfully: {request.path}")
+                    file_watcher.mark_as_web_saved(request.path)
+                    return {"success": True, "message": "CSV file saved successfully"}
+        except (json.JSONDecodeError, KeyError):
+            # Not JSON or not Excel/CSV data, save as regular text file
+            pass
+        
+        # Write as regular text file
         async with aiofiles.open(request.path, mode='w', encoding='utf-8') as f:
             await f.write(request.content)
         
