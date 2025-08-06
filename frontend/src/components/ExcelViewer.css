@@ -124,6 +124,8 @@
   flex: 1;
   overflow: hidden;
   padding: 10px;
+  min-height: 400px;
+  height: calc(100vh - 200px);
 }
 
 /* Handsontable theme adjustments */

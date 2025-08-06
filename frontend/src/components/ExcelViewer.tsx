@@ -35,25 +35,31 @@ const ExcelViewer: React.FC<ExcelViewerProps> = ({ content, path, onContentChang
 
   useEffect(() => {
     try {
+      console.log('📊 ExcelViewer: Parsing content:', content.length, 'characters');
       const parsed = JSON.parse(content) as ExcelData;
+      console.log('📊 ExcelViewer: Parsed data:', parsed);
       setExcelData(parsed);
       
       if (parsed.type === 'excel' && parsed.sheets && parsed.sheet_names) {
         // Excel file with multiple sheets
         const firstSheet = parsed.sheet_names[0];
+        console.log('📊 ExcelViewer: Setting active sheet:', firstSheet);
         setActiveSheet(firstSheet);
         const sheetData = parsed.sheets[firstSheet];
         if (sheetData) {
+          console.log('📊 ExcelViewer: Sheet data:', sheetData.columns.length, 'columns,', sheetData.data.length, 'rows');
           setCurrentColumns(sheetData.columns);
           setCurrentData(sheetData.data);
         }
       } else if (parsed.type === 'csv') {
         // CSV file
+        console.log('📊 ExcelViewer: Setting CSV data:', parsed.columns?.length, 'columns,', parsed.data?.length, 'rows');
         setCurrentColumns(parsed.columns || []);
         setCurrentData(parsed.data || []);
       }
     } catch (error) {
-      console.error('Error parsing Excel/CSV data:', error);
+      console.error('❌ ExcelViewer: Error parsing Excel/CSV data:', error);
+      console.log('📝 ExcelViewer: Content that failed to parse:', content);
     }
   }, [content]);
 
@@ -100,6 +106,15 @@ const ExcelViewer: React.FC<ExcelViewerProps> = ({ content, path, onContentChang
     return <div className="excel-viewer-loading">Loading spreadsheet...</div>;
   }
 
+  if (currentData.length === 0) {
+    return (
+      <div className="excel-viewer-loading">
+        <div>No data found in spreadsheet</div>
+        <div>Columns: {currentColumns.length}, Rows: {currentData.length}</div>
+      </div>
+    );
+  }
+
   const fileName = path.split('/').pop() || '';
 
   return (
@@ -134,7 +149,7 @@ const ExcelViewer: React.FC<ExcelViewerProps> = ({ content, path, onContentChang
           colHeaders={currentColumns}
           rowHeaders={true}
           width="100%"
-          height="100%"
+          height={400}
           licenseKey="non-commercial-and-evaluation"
           readOnly={readOnly}
           afterChange={handleCellChange}
