@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 import aiofiles
 import pandas as pd
 import openpyxl
@@ -188,16 +188,48 @@ class FileContent(BaseModel):
     content: str
     is_binary: bool
 
-class WriteFileRequest(BaseModel):
+class AIAnalysisRequest(BaseModel):
+    query: str
+    project_path: Optional[str] = None
+    reset_context: bool = False
+
+    model_config = ConfigDict(
+        json_schema_extra = {
+            "example": {
+                "query": "Analyze the contents of this file",
+                "project_path": "/path/to/project",
+                "reset_context": False
+            }
+        }
+    )
+
+class FileWriteRequest(BaseModel):
     path: str
     content: str
 
-class AIAnalysisRequest(BaseModel):
-    query: str
-    file_paths: Optional[List[str]] = None
-    project_path: Optional[str] = None
-    session_id: Optional[str] = "default"
-    reset_context: Optional[bool] = False
+    model_config = ConfigDict(
+        json_schema_extra = {
+            "example": {
+                "path": "/path/to/file.txt",
+                "content": "New file content"
+            }
+        }
+    )
+
+class FileReadRequest(BaseModel):
+    path: str
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
+
+    model_config = ConfigDict(
+        json_schema_extra = {
+            "example": {
+                "path": "/path/to/file.txt",
+                "start_line": 1,
+                "end_line": 10
+            }
+        }
+    )
 
 class FileWatcher(FileSystemEventHandler):
     """File system watcher for detecting changes on disk"""
@@ -434,6 +466,35 @@ def build_file_tree(directory: str, max_depth: int = 10, current_depth: int = 0)
     
     return items
 
+from tools.data_analysis import intelligent_data_visualization
+
+@app.post("/api/visualize-data")
+async def visualize_data(file_path: str):
+    """
+    Endpoint for intelligent data visualization
+    
+    Args:
+        file_path (str): Path to the data file
+    
+    Returns:
+        Visualization details or error message
+    """
+    try:
+        result = intelligent_data_visualization(file_path)
+        
+        if result:
+            return {
+                "status": "success",
+                "chart_path": result['chart_path'],
+                "strategy": result.get('strategy', 'Default visualization')
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Unable to generate visualization"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/")
@@ -528,7 +589,7 @@ async def get_file_content(path: str):
         raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
 
 @app.post("/api/write-file")
-async def write_file(request: WriteFileRequest):
+async def write_file(request: FileWriteRequest):
     """Write content to file"""
     try:
         print(f"Saving file: {request.path}")
@@ -658,6 +719,40 @@ async def pick_directory():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error opening folder picker: {str(e)}")
 
+@app.post("/api/open-file")
+async def open_file(request: FileReadRequest):
+    """
+    Open a file using the system's default application.
+    
+    Args:
+        request (FileReadRequest): Request containing file path
+    
+    Returns:
+        dict: Status of file opening operation
+    """
+    try:
+        import subprocess
+        import platform
+        
+        path = request.path
+        
+        # Normalize path to absolute
+        if not os.path.isabs(path):
+            path = os.path.abspath(path)
+        
+        # Platform-specific file opening
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", path], check=True)
+        elif system == "Windows":
+            os.startfile(path)
+        else:  # Linux and other Unix-like systems
+            subprocess.run(["xdg-open", path], check=True)
+        
+        return {"status": "success", "path": path}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post("/api/ai/analyze")
 async def analyze_with_ai(request: AIAnalysisRequest):
     """
@@ -695,8 +790,14 @@ async def analyze_with_ai(request: AIAnalysisRequest):
 async def test_ai():
     """Test AI agent connectivity"""
     try:
-        agent = get_ai_agent()
-        return {"status": "ok", "message": "AI agent initialized successfully"}
+        # Explicitly define tool names
+        tool_names = ["data_tool", "code_executor"]
+        
+        return {
+            "status": "ok", 
+            "message": "AI agent initialized successfully",
+            "tool_names": tool_names
+        }
     except Exception as e:
         return {"status": "error", "message": f"AI agent error: {str(e)}"}
 
@@ -735,6 +836,18 @@ async def clear_ai_context(session_id: str = "default"):
         return {"status": "ok", "message": f"Context cleared for session: {session_id}"}
     except Exception as e:
         return {"status": "error", "message": f"Error clearing context: {str(e)}"}
+
+@app.post("/api/ai/reset-all")
+async def reset_all_sessions():
+    """Reset all AI agent sessions"""
+    try:
+        from ai_agent_manager import _agent_sessions
+        session_ids = list(_agent_sessions.keys())
+        for session_id in session_ids:
+            clear_session(session_id)
+        return {"status": "ok", "message": f"Reset {len(session_ids)} sessions", "sessions": session_ids}
+    except Exception as e:
+        return {"status": "error", "message": f"Error resetting sessions: {str(e)}"}
 
 @app.get("/api/ai/info")
 async def get_ai_agent_info():

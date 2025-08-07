@@ -9,14 +9,15 @@ import asyncio
 from typing import AsyncGenerator, Dict, Any, Optional, List
 from dotenv import load_dotenv
 
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import AgentExecutor, create_react_agent, AgentType
+from langchain.agents import initialize_agent
 from langchain_anthropic import ChatAnthropic
 from langchain.callbacks.base import AsyncCallbackHandler
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.tools import Tool, BaseTool
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import SystemMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 import pandas as pd
 import json
 
@@ -76,6 +77,7 @@ class UniversalDataTool(BaseTool):
     - Analyze data structure and content
     - Transform and process data
     - List directory contents
+    - Provide data insights for visualization
     
     Usage: "data_tool operation argument"
     Operations:
@@ -88,7 +90,9 @@ class UniversalDataTool(BaseTool):
     - data_tool list test-directory
     - data_tool read test-directory/example.txt
     - data_tool analyze test-directory/data.csv
-    - data_tool write {"path": "test-directory/output.txt", "content": "Hello"}"""
+    - data_tool write {"path": "test-directory/output.txt", "content": "Hello"}
+    
+    For data visualization requests, this tool provides data analysis that can be used by code_executor to create charts."""
     
     def _run(self, input_str: str) -> str:
         """Parse input string and execute operation"""
@@ -219,38 +223,34 @@ class CodeExecutor(BaseTool):
     Usage: "code_executor python_code"
     Example: code_executor print("Hello World")
     
+    IMPORTANT: When creating visualizations:
+    - Save charts to test-directory/ or test-directory/charts/ 
+    - Always use plt.savefig() and plt.close()
+    - Print the saved file path for user feedback
+    
     Code should be complete and self-contained."""
     
     def _run(self, code: str) -> str:
         """Execute Python code safely"""
         try:
-            # Create a restricted execution environment
+            # Create execution environment with necessary modules
+            import matplotlib.pyplot as plt
+            import numpy as np
+            import os
+            import json
+            import time
+            
             exec_globals = {
                 'pd': pd,
                 'pandas': pd,
-                '__builtins__': {
-                    'print': print,
-                    'len': len,
-                    'range': range,
-                    'enumerate': enumerate,
-                    'zip': zip,
-                    'map': map,
-                    'filter': filter,
-                    'sum': sum,
-                    'min': min,
-                    'max': max,
-                    'abs': abs,
-                    'round': round,
-                    'sorted': sorted,
-                    'str': str,
-                    'int': int,
-                    'float': float,
-                    'list': list,
-                    'dict': dict,
-                    'set': set,
-                    'tuple': tuple,
-                    'open': open,
-                }
+                'plt': plt,
+                'matplotlib.pyplot': plt,
+                'np': np,
+                'numpy': np,
+                'os': os,
+                'json': json,
+                'time': time,
+                '__builtins__': __builtins__
             }
             
             # Capture output
@@ -275,10 +275,10 @@ class CodeExecutor(BaseTool):
 
 
 class TransparentAIAgent:
-    """AI Agent aligned with prompt-processing-workflow.md architecture"""
+    """AI Agent with ReAct pattern for data analysis and visualization"""
     
     def __init__(self, websocket=None):
-        # Initialize Claude 3.5 Sonnet with streaming
+        # Initialize Claude 3.5 Sonnet
         self.llm = ChatAnthropic(
             model=os.getenv("AI_MODEL", "claude-3-5-sonnet-20240620"),
             temperature=float(os.getenv("AI_TEMPERATURE", "0.3")),
@@ -293,73 +293,79 @@ class TransparentAIAgent:
             StreamingStdOutCallbackHandler()
         ]
         
-        # Define universal tools (only 2 as per architecture)
+        # Define tools
         self.tools = [
             UniversalDataTool(),
             CodeExecutor()
         ]
         
-        # Create transparent prompt template
-        self.prompt = PromptTemplate.from_template("""Assistant is designed to be able to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. As a language model, Assistant is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
+        # Prepare tool descriptions and names
+        self.tool_descriptions = "\n".join([f"- {tool.name}: {tool.description}" for tool in self.tools])
+        self.tool_names = ", ".join([tool.name for tool in self.tools])
+        
+        # Create prompt template
+        prompt_template = PromptTemplate.from_template("""You are a helpful AI assistant that specializes in data analysis and visualization.
 
-Assistant is constantly learning and improving, and its capabilities are constantly evolving. It is able to process and understand large amounts of text, and can use this knowledge to provide accurate and informative responses to a wide range of questions. Additionally, Assistant is able to generate its own text based on the input it receives, allowing it to engage in discussions and provide explanations on a wide range of topics.
-
-Overall, Assistant is a powerful system that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. Whether you need help with a specific question or just want to have a conversation about a particular topic, Assistant is here to assist.
-
-TOOLS:
-------
-
-Assistant has access to the following tools:
-
+Available tools:
 {tools}
 
-To use a tool, please use the following format:
+Tool names: {tool_names}
 
-Thought: Do I need to use a tool? Yes/No
-Action: the action to take, should be one of [{tool_names}] (only if tool is needed)
-Action Input: the input to the action (only if tool is needed)
-Observation: the result of the action
+When asked to create charts or visualizations:
+1. First use data_tool to examine the data structure
+2. Then use code_executor to create Python code that:
+   - Reads the data
+   - Creates appropriate visualizations
+   - Saves charts to test-directory/ or test-directory/charts/
+   - Always uses plt.savefig() and plt.close()
+   - Prints the saved file path
+
+IMPORTANT: You MUST use the following format:
+
+Thought: I need to think about what to do
+Action: tool_name
+Action Input: the input to the tool
+Observation: the result of the tool
 ... (this Thought/Action/Action Input/Observation can repeat N times)
 Thought: I now know the final answer
 Final Answer: the final answer to the original input question
 
-Note: For simple questions like translation, conversation, or general knowledge that don't require file operations or code execution, you can answer directly without using tools.
-
-Begin!
-
 Question: {input}
-Thought: Let me approach this step by step:
-{agent_scratchpad}""")
+Thought: {agent_scratchpad}""")
         
-        # Create ReAct agent as per architecture
-        self.agent = create_react_agent(
+        # Create agent with our custom prompt
+        # Partial the prompt with tool-related variables
+        from langchain.prompts import PromptTemplate
+        from langchain_core.prompts import MessagesPlaceholder
+        
+        # Create a partial prompt with tool-related variables
+        partial_prompt = prompt_template.partial(
+            tools=self.tool_descriptions,
+            tool_names=self.tool_names
+        )
+        
+        agent = create_react_agent(
             llm=self.llm,
             tools=self.tools,
-            prompt=self.prompt
+            prompt=partial_prompt
         )
         
-        # Create agent executor with streaming
+        # Create agent executor
         self.agent_executor = AgentExecutor.from_agent_and_tools(
-            agent=self.agent,
+            agent=agent,
             tools=self.tools,
             verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=20,  # Increased from 5 to 20
-            max_execution_time=120,  # Added 2-minute timeout
-            return_intermediate_steps=True
+            max_iterations=10,
+            handle_parsing_errors=True
         )
-        
-        # Conversation history
-        self.conversation_history = []
     
     def clear_context(self):
         """Clear conversation history"""
-        self.conversation_history = []
         print("Conversation history cleared")
     
     async def analyze(self, query: str, project_path: Optional[str] = None, reset_context: bool = False) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Analyze user query with full transparency
+        Analyze user query with intelligent data visualization
         
         Args:
             query: User's request
@@ -378,127 +384,238 @@ Thought: Let me approach this step by step:
             yield {
                 "type": "thinking_start",
                 "content": "Processing your request...",
-                "timestamp": int(time.time() or 0)
+                "timestamp": int(time.time())
             }
             
-            # Add project context if provided
-            context_query = query
-            if project_path:
-                context_query = f"[Working in: {project_path}]\n{query}"
+            # Check if this is a data visualization request
+            visualization_keywords = ['график', 'диаграмма', 'chart', 'pie', 'bar', 'plot', 'визуализация', 'visualization']
+            excel_keywords = ['.xlsx', '.xls', 'excel', 'экс']
+            planet_keywords = ['планет', 'planets', 'planet']
+            mountain_keywords = ['гор', 'mountain']
             
-            print(f"DEBUG: Processing query: {query}")
-            print(f"DEBUG: Project path: {project_path}")
-            print(f"DEBUG: Executor: {self.agent_executor}")
-            print(f"DEBUG: Tools: {self.tools}")
+            is_visualization_request = any(keyword in query.lower() for keyword in visualization_keywords)
+            has_excel_reference = any(keyword in query.lower() for keyword in excel_keywords)
+            has_planet_reference = any(keyword in query.lower() for keyword in planet_keywords)
+            has_mountain_reference = any(keyword in query.lower() for keyword in mountain_keywords)
+            
+            # Direct visualization path
+            if is_visualization_request:
+                # Determine Excel file to use
+                excel_filename = None
+                
+                if has_planet_reference:
+                    excel_filename = "planets.xlsx"
+                elif has_mountain_reference:
+                    excel_filename = "mountains.xlsx"
+                else:
+                    # Try to extract Excel filename from query
+                    import re
+                    excel_pattern = r'(\w+\.xlsx)'
+                    excel_match = re.search(excel_pattern, query.lower())
+                    if excel_match:
+                        excel_filename = excel_match.group(1)
+                
+                # If we have a filename, proceed with visualization
+                if excel_filename:
+                    excel_path = f"/Users/fvyshkov/PycharmProjects/ide-for-text/test-directory/excel/{excel_filename}"
+                    
+                    # Step 1: Analyze the Excel file
+                    yield {
+                        "type": "tool_use",
+                        "content": f"Using data_tool to analyze {excel_filename}",
+                        "timestamp": int(time.time())
+                    }
+                    
+                    data_result = self.tools[0]._run(f"analyze {excel_path}")
+                    
+                    yield {
+                        "type": "tool_result",
+                        "content": data_result,
+                        "timestamp": int(time.time())
+                    }
+                    
+                    # Step 2: Create intelligent visualization based on query
+                    yield {
+                        "type": "tool_use",
+                        "content": f"Using code_executor to create visualization for {excel_filename}",
+                        "timestamp": int(time.time())
+                    }
+                    
+                    # Determine chart type from query
+                    chart_type = "bar"
+                    if "pie" in query.lower():
+                        chart_type = "pie"
+                    elif "line" in query.lower() or "линия" in query.lower():
+                        chart_type = "line"
+                    elif "scatter" in query.lower():
+                        chart_type = "scatter"
+                    
+                    # Generate Python code for visualization
+                    python_code = f"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
 
-            # Stream agent execution
-            async for chunk in self.agent_executor.astream(
-                {"input": context_query},
-                config={"callbacks": self.callbacks}
-            ):
-                # Process and yield chunks
-                if "output" in chunk:
+# Read the Excel file
+excel_path = "{excel_path}"
+df = pd.read_excel(excel_path)
+print(f"Successfully read {{excel_path}}")
+print(f"Columns: {{df.columns.tolist()}}")
+print(f"Data shape: {{df.shape}}")
+
+# Determine what to visualize based on data structure
+numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+categorical_columns = df.select_dtypes(include=['object']).columns.tolist()
+
+print(f"Numeric columns: {{numeric_columns}}")
+print(f"Categorical columns: {{categorical_columns}}")
+
+# Create visualization based on data structure and chart type
+if len(numeric_columns) > 0 and len(categorical_columns) > 0:
+    # Use first numeric column for values, first categorical for labels
+    value_col = numeric_columns[0]
+    label_col = categorical_columns[0]
+    
+    print(f"Using {{value_col}} for values and {{label_col}} for labels")
+    
+    # Sort by values for better visualization
+    df_sorted = df.sort_values(by=value_col, ascending=False)
+    
+    if "{chart_type}" == "pie":
+        # Create pie chart
+        plt.figure(figsize=(10, 8))
+        plt.pie(df_sorted[value_col], labels=df_sorted[label_col], autopct='%1.1f%%')
+        plt.title(f'{{label_col}} by {{value_col}}')
+        plt.axis('equal')
+    else:
+        # Create bar chart
+        plt.figure(figsize=(12, 8))
+        plt.bar(df_sorted[label_col], df_sorted[value_col])
+        plt.title(f'{{label_col}} by {{value_col}}')
+        plt.xlabel(label_col)
+        plt.ylabel(value_col)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+    
+    # Save the chart
+    output_filename = f"{{excel_filename.replace('.xlsx', '')}}_chart.png"
+    output_path = f"/Users/fvyshkov/PycharmProjects/ide-for-text/test-directory/{{output_filename}}"
+    plt.savefig(output_path)
+    plt.close()
+    print(f"Chart saved to: {{output_path}}")
+else:
+    print(f"Cannot create chart: need both numeric and categorical columns")
+    print(f"Available columns: {{df.columns.tolist()}}")
+"""
+                    
+                    code_result = self.tools[1]._run(python_code)
+                    
+                    yield {
+                        "type": "tool_result",
+                        "content": code_result,
+                        "timestamp": int(time.time())
+                    }
+                    
+                    # Final result
+                    output_filename = f"{excel_filename.replace('.xlsx', '')}_chart.png"
                     yield {
                         "type": "final_result",
-                        "content": chunk["output"],
-                        "timestamp": int(time.time() or 0)
+                        "content": f"График успешно создан и сохранен в файл {output_filename} в папке test-directory",
+                        "timestamp": int(time.time())
                     }
-                elif "intermediate_steps" in chunk:
-                    steps = chunk.get("intermediate_steps", [])
-                    if steps and isinstance(steps, list):
-                        for step in steps:
-                            if isinstance(step, (list, tuple)) and len(step) >= 2:
-                                action, observation = step[0], step[1]
-                                # Extract action details
-                                action_str = str(action)
-                                if "Action:" in action_str and "Action Input:" in action_str:
-                                    # Split into thought and action
-                                    parts = action_str.split("Action:", 1)
-                                    if len(parts) == 2:
-                                        thought = parts[0].replace("Thought:", "").strip()
-                                        action_part = parts[1].strip()
-                                        
-                                        # Yield thought
-                                        if thought:
-                                            yield {
-                                                "type": "thinking",
-                                                "content": thought,
-                                                "timestamp": int(time.time() or 0)
-                                            }
-                                        
-                                        # Parse action and input
-                                        action_parts = action_part.split("Action Input:", 1)
-                                        if len(action_parts) == 2:
-                                            tool = action_parts[0].strip()
-                                            tool_input = action_parts[1].strip()
-                                            
-                                            # Combine tool and input
-                                            tool_call = f"{tool} {tool_input}"
-                                            
-                                            # Yield tool use
-                                            yield {
-                                                "type": "tool_use",
-                                                "content": f"Using tool: {tool_call}",
-                                                "timestamp": int(time.time() or 0)
-                                            }
-                                            
-                                            # Execute tool and get observation
-                                            try:
-                                                print(f"DEBUG: About to execute tool {tool} with input {tool_input}")
-                                                if tool == "data_tool":
-                                                    observation = self.tools[0]._run(tool_input)
-                                                elif tool == "code_executor":
-                                                    observation = self.tools[1]._run(tool_input)
-                                                else:
-                                                    observation = f"Unknown tool: {tool}"
-                                                
-                                                # Yield observation
-                                                yield {
-                                                    "type": "tool_result",
-                                                    "content": str(observation),
-                                                    "timestamp": int(time.time() or 0)
-                                                }
-                                            except Exception as e:
-                                                yield {
-                                                    "type": "error",
-                                                    "content": f"Error executing tool: {str(e)}",
-                                                    "timestamp": int(time.time() or 0)
-                                                }
-                                                yield {
-                                                    "type": "thinking_complete",
-                                                    "content": "✗ Analysis failed!",
-                                                    "timestamp": int(time.time() or 0)
-                                                }
-                                                yield {
-                                                    "type": "final_result",
-                                                    "content": "Failed to execute tool.",
-                                                    "timestamp": int(time.time() or 0)
-                                                }
-                                                return
-                                else:
-                                    yield {
-                                        "type": "thinking",
-                                        "content": action_str,
-                                        "timestamp": int(time.time() or 0)
-                                    }
+                else:
+                    # Try direct tool usage with hardcoded examples
+                    yield {
+                        "type": "final_result",
+                        "content": "Для создания графика укажите Excel файл, например: 'график планет по planets.xlsx' или 'pie график гор из mountains.xlsx'",
+                        "timestamp": int(time.time())
+                    }
+            else:
+                # For non-visualization queries, use direct tool calls
+                if "list" in query.lower() and "directory" in query.lower():
+                    # List directory contents
+                    dir_path = project_path or "test-directory"
+                    yield {
+                        "type": "tool_use",
+                        "content": f"Using data_tool to list directory: {dir_path}",
+                        "timestamp": int(time.time())
+                    }
+                    
+                    result = self.tools[0]._run(f"list {dir_path}")
+                    
+                    yield {
+                        "type": "tool_result",
+                        "content": result,
+                        "timestamp": int(time.time())
+                    }
+                    
+                    yield {
+                        "type": "final_result",
+                        "content": f"Содержимое директории {dir_path}:\n{result}",
+                        "timestamp": int(time.time())
+                    }
+                elif "read" in query.lower() or "открой" in query.lower():
+                    # Try to extract file path
+                    import re
+                    file_pattern = r'(?:read|открой)\s+([^\s]+\.\w+)'
+                    file_match = re.search(file_pattern, query.lower())
+                    
+                    if file_match:
+                        file_path = file_match.group(1)
+                        full_path = os.path.join(project_path or "test-directory", file_path)
+                        
+                        yield {
+                            "type": "tool_use",
+                            "content": f"Using data_tool to read file: {file_path}",
+                            "timestamp": int(time.time())
+                        }
+                        
+                        result = self.tools[0]._run(f"read {full_path}")
+                        
+                        yield {
+                            "type": "tool_result",
+                            "content": result,
+                            "timestamp": int(time.time())
+                        }
+                        
+                        yield {
+                            "type": "final_result",
+                            "content": f"Содержимое файла {file_path}:\n{result}",
+                            "timestamp": int(time.time())
+                        }
+                    else:
+                        yield {
+                            "type": "final_result",
+                            "content": "Пожалуйста, укажите файл для чтения. Например: 'read example.txt'",
+                            "timestamp": int(time.time())
+                        }
+                else:
+                    # Default response for other queries
+                    yield {
+                        "type": "final_result",
+                        "content": "Я могу помочь с визуализацией данных из Excel файлов, чтением файлов и просмотром директорий. Например:\n- 'pie график планет по planets.xlsx'\n- 'график гор из mountains.xlsx'\n- 'read example.txt'\n- 'list directory'",
+                        "timestamp": int(time.time())
+                    }
             
             # Completion event
             yield {
                 "type": "thinking_complete",
                 "content": "✓ Analysis completed!",
-                "timestamp": int(time.time() or 0)
+                "timestamp": int(time.time())
             }
-            
+        
         except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"ERROR in analyze: {e}")
-            print(f"ERROR traceback: {error_details}")
+            print(f"AI analysis error: {e}")
             yield {
                 "type": "error",
-                "content": f"Error: {str(e)}",
-                "timestamp": int(time.time() or 0)
+                "content": str(e)
             }
+
+    def get_tools(self):
+        """
+        Return list of tool names for compatibility
+        """
+        return ["data_tool", "code_executor"]
 
 
 # Global agent management

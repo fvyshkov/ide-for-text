@@ -139,3 +139,21 @@ export const pickDirectorySimple = async (): Promise<string | null> => {
   // Always use the input-based picker for simplicity
   return await pickDirectoryWithInput();
 };
+
+export const openFile = async (filePath: string): Promise<void> => {
+  try {
+    const response = await fetch('http://localhost:8001/api/open-file', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ path: filePath }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to open file');
+    }
+  } catch (error) {
+    console.error('Error opening file:', error);
+  }
+};

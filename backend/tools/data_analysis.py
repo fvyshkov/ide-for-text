@@ -7,6 +7,19 @@ import pandas as pd
 from pathlib import Path
 from langchain.tools import tool
 
+"""
+Advanced data analysis and visualization tools
+Uses LangChain and AI for intelligent data processing
+"""
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from typing import Optional, Dict, Any
+
+from langchain_anthropic import ChatAnthropic
+from langchain_core.prompts import PromptTemplate
+
 class DataAnalysisTool:
     """Handles data analysis for various file formats"""
     
@@ -152,3 +165,90 @@ class DataAnalysisTool:
             
         except Exception as e:
             return {"error": str(e)}
+
+def intelligent_data_visualization(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Intelligently generate data visualization based on file content
+    
+    Args:
+        file_path (str): Path to the data file
+    
+    Returns:
+        Dict with visualization details or None if generation fails
+    """
+    try:
+        # Read file based on extension
+        if file_path.endswith('.xlsx'):
+            df = pd.read_excel(file_path)
+        elif file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        else:
+            raise ValueError("Unsupported file type")
+        
+        # Initialize LLM for intelligent visualization
+        llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
+        
+        # Prompt for visualization strategy
+        visualization_prompt = PromptTemplate.from_template("""
+        Analyze the following data and suggest the most informative visualization:
+
+        Data preview:
+        {data_preview}
+
+        Columns: {columns}
+
+        Suggest:
+        1. Visualization type (pie, bar, line, scatter)
+        2. Columns to use
+        3. Key insights to highlight
+
+        Provide a concise recommendation.
+        """)
+        
+        # Prepare data for prompt
+        data_preview = df.head().to_string()
+        columns = list(df.columns)
+        
+        # Get visualization recommendation
+        visualization_strategy = llm.invoke(
+            visualization_prompt.format(
+                data_preview=data_preview, 
+                columns=columns
+            )
+        ).content
+        
+        # Generate visualization based on strategy
+        plt.figure(figsize=(10, 6))
+        
+        # Basic visualization logic (can be expanded)
+        if 'pie' in visualization_strategy.lower():
+            # Assume first column is labels, second is values
+            plt.pie(df.iloc[:, 1], labels=df.iloc[:, 0], autopct='%1.1f%%')
+            plt.title(f'Pie Chart: {df.columns[0]} vs {df.columns[1]}')
+        elif 'bar' in visualization_strategy.lower():
+            df.plot(kind='bar', x=df.columns[0], y=df.columns[1])
+            plt.title(f'Bar Chart: {df.columns[0]} vs {df.columns[1]}')
+        elif 'line' in visualization_strategy.lower():
+            df.plot(kind='line')
+            plt.title('Line Chart of Data')
+        else:
+            df.plot(kind='scatter', x=df.columns[0], y=df.columns[1])
+            plt.title(f'Scatter Plot: {df.columns[0]} vs {df.columns[1]}')
+        
+        # Save visualization
+        output_dir = os.path.dirname(file_path)
+        output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_visualization.png"
+        output_path = os.path.join(output_dir, output_filename)
+        
+        plt.tight_layout()
+        plt.savefig(output_path)
+        plt.close()
+        
+        return {
+            "chart_path": output_path,
+            "strategy": visualization_strategy
+        }
+    
+    except Exception as e:
+        print(f"Visualization error: {e}")
+        return None

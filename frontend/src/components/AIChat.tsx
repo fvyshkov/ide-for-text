@@ -1,16 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FaPaperPlane, FaRobot, FaUser, FaTrash, FaBrain, FaTools, FaCheckCircle, FaCopy, FaCheck } from 'react-icons/fa';
 import './AIChat.css';
+// Импортируем API для работы с файлами
+import { openFile } from '../utils/fileUtils';
 
 interface Message {
   id: string;
-  type: 'user' | 'assistant' | 'thinking' | 'tool_use' | 'tool_result';
+  type: 'user' | 'assistant' | 'thinking' | 'tool_use' | 'tool_result' | 'file_generated';
   content: string;
   timestamp: Date;
   metadata?: {
     tool_name?: string;
     tool_input?: any;
     thinking_type?: string;
+    generatedFile?: {
+      path: string;
+      type: 'image' | 'text' | 'other';
+    };
   };
 }
 
@@ -189,6 +195,24 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
                     
                     return [...prev, aiMessage];
                   });
+
+                  if (event.type === 'file_changed') {
+                    const fileMessage: Message = {
+                      id: `file-${Date.now()}`,
+                      type: 'file_generated',
+                      content: `Создан файл: ${event.path.split('/').pop()}`,
+                      timestamp: new Date(),
+                      metadata: {
+                        generatedFile: {
+                          path: event.path,
+                          type: event.path.toLowerCase().endsWith('.png') ? 'image' : 
+                                 event.path.toLowerCase().endsWith('.txt') ? 'text' : 'other'
+                        }
+                      }
+                    };
+
+                    setMessages(prev => [...prev, fileMessage]);
+                  }
                 }
               } catch (e) {
                 console.error('Failed to parse AI event:', e, 'Line:', line);
@@ -282,6 +306,12 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
     }
   };
 
+  const handleMessageClick = (message: Message) => {
+    if (message.type === 'file_generated' && message.metadata?.generatedFile) {
+      openFile(message.metadata.generatedFile.path);
+    }
+  };
+
   return (
     <div className="ai-chat">
       <div className="ai-chat-header">
@@ -300,7 +330,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
 
       <div className="ai-chat-messages">
         {messages.map((message) => (
-          <div key={message.id} className={getMessageClass(message.type)}>
+          <div key={message.id} className={getMessageClass(message.type)} onClick={() => handleMessageClick(message)}>
             <div className="message-header">
               <div className="message-avatar">
                 {getMessageIcon(message.type)}
