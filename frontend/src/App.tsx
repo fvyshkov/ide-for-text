@@ -45,10 +45,24 @@ function App() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const content: FileContent = await response.json();
-      console.log('✅ File content loaded, length:', content.content.length);
-      // File loaded successfully
-      setFileContent(content);
+      // Check the Content-Type of the response
+      const contentType = response.headers.get('Content-Type');
+      
+      if (contentType && contentType.startsWith('image/')) {
+        // For images, create a special file content object
+        setFileContent({
+          path: filePath,
+          content: "",  // Content doesn't matter for images
+          is_binary: true,
+          file_type: "image"
+        });
+        console.log('✅ Image file loaded:', filePath);
+      } else {
+        // For text, Excel and other files, use JSON response
+        const content: FileContent = await response.json();
+        console.log('✅ File content loaded, type:', content.file_type || 'text', 'length:', content.content?.length || 0);
+        setFileContent(content);
+      }
     } catch (error) {
       console.error('❌ Error loading file content:', error);
       alert('Error loading file content.');

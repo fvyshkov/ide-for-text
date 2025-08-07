@@ -9,4 +9,5 @@ export interface FileContent {
   path: string;
   content: string;
   is_binary: boolean;
+  file_type?: string;
 }

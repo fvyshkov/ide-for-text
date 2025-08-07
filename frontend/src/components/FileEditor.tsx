@@ -3,7 +3,9 @@ import Editor from '@monaco-editor/react';
 import { FileContent } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import ExcelViewer from './ExcelViewer';
+import { API_BASE_URL } from '../utils/config';
 import './FileEditor.css';
+import { FaImage, FaFile } from 'react-icons/fa';
 
 interface FileEditorProps {
   fileContent: FileContent | null;
@@ -26,46 +28,33 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
   }, [fileContent]);
 
   // Get file language based on extension
-  const getLanguage = (fileName: string): string => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    
-    const languageMap: Record<string, string> = {
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'py': 'python',
-      'json': 'json',
-      'html': 'html',
-      'css': 'css',
-      'scss': 'scss',
-      'sass': 'sass',
-      'md': 'markdown',
-      'xml': 'xml',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'txt': 'plaintext',
-      'log': 'plaintext',
-      'cfg': 'plaintext',
-      'ini': 'ini',
-      'sh': 'shell',
-      'bash': 'shell',
-      'sql': 'sql',
-      'php': 'php',
-      'java': 'java',
-      'c': 'c',
-      'cpp': 'cpp',
-      'h': 'c',
-      'hpp': 'cpp',
-      'cs': 'csharp',
-      'go': 'go',
-      'rs': 'rust',
-      'rb': 'ruby',
-      'vue': 'html',
-      'dockerfile': 'dockerfile'
-    };
-    
-    return languageMap[extension || ''] || 'plaintext';
+  const getLanguageFromFileName = (fileName: string): string => {
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    switch (ext) {
+      case 'js':
+      case 'jsx':
+        return 'javascript';
+      case 'ts':
+      case 'tsx':
+        return 'typescript';
+      case 'py':
+        return 'python';
+      case 'json':
+        return 'json';
+      case 'md':
+        return 'markdown';
+      case 'html':
+        return 'html';
+      case 'css':
+        return 'css';
+      case 'xml':
+        return 'xml';
+      case 'yaml':
+      case 'yml':
+        return 'yaml';
+      default:
+        return 'plaintext';
+    }
   };
 
   const handleEditorDidMount = (editor: any) => {
@@ -122,6 +111,11 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
     }
   }, [onUpdateContentRef]);
 
+  const isImageFile = (fileName: string) => {
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg'];
+    return imageExtensions.some(ext => fileName.toLowerCase().endsWith(ext));
+  };
+
   if (isLoading) {
     return (
       <div className="file-editor loading">
@@ -141,37 +135,9 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
     );
   }
 
-  // Check if it's a data file (Excel, CSV) - removed as no longer needed
-
-  // Check if we have Excel/CSV data
-  const fileType = (fileContent as any).file_type;
-  if (fileType === 'excel' || fileType === 'csv') {
-    return (
-      <div className="file-editor">
-        <ExcelViewer
-          content={fileContent.content || ''}
-          path={fileContent.path}
-          onContentChange={onContentChange}
-          readOnly={false}
-        />
-      </div>
-    );
-  }
-
-  if (fileContent.is_binary) {
-    return (
-      <div className="file-editor binary">
-        <div className="binary-file-message">
-          <h3>Binary File</h3>
-          <p>This file cannot be displayed as text.</p>
-          <p><strong>File:</strong> {fileContent.path}</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Get file extension and language
   const fileName = fileContent.path.split('/').pop() || '';
-  const language = getLanguage(fileName);
+  const language = getLanguageFromFileName(fileName);
   const editorTheme = theme === 'light' ? 'light' : 'vs-dark';
 
   // Monaco Editor creation
@@ -183,42 +149,77 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
         <span className="file-path">{fileContent.path}</span>
       </div>
       
-      <div className="editor-container editor-tall">
-        <Editor
-          key={`monaco-${fileContent.path}`}
-          height="100%"
-          defaultLanguage={language}
-          defaultValue={fileContent.content || ''}
-          onMount={handleEditorDidMount}
-          onChange={handleEditorChange}
-          theme={editorTheme}
-          options={{
-            minimap: { enabled: true },
-            fontSize: 14,
-            lineNumbers: 'on',
-            renderWhitespace: 'selection',
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            wordWrap: 'on',
-            wrappingIndent: 'indent',
-            tabSize: 2,
-            insertSpaces: true,
-            detectIndentation: true,
-            trimAutoWhitespace: true,
-            renderLineHighlight: 'line',
-            selectionHighlight: true,
-            occurrencesHighlight: 'singleFile',
-            codeLens: false,
-            folding: true,
-            foldingHighlight: true,
-            showFoldingControls: 'mouseover',
-            matchBrackets: 'always',
-            autoIndent: 'full',
-            formatOnPaste: true,
-            formatOnType: true
-          }}
-        />
-      </div>
+      {fileContent && !isLoading && (
+        fileContent.file_type === 'excel' || fileContent.file_type === 'csv' ? (
+          // Excel/CSV Viewer
+          <ExcelViewer
+            content={fileContent.content || ''}
+            path={fileContent.path}
+            onContentChange={onContentChange}
+            readOnly={false}
+          />
+        ) : fileContent.file_type === 'image' || isImageFile(fileContent.path) ? (
+          // Image Viewer
+          <div className="image-viewer">
+            <img 
+              src={`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(fileContent.path)}`} 
+              alt={fileContent.path.split('/').pop()} 
+              className="file-image"
+            />
+            <div className="image-info">
+              <FaImage /> {fileContent.path.split('/').pop()}
+            </div>
+          </div>
+        ) : fileContent.is_binary ? (
+          // Binary File Viewer
+          <div className="binary-file-viewer">
+            <div className="binary-file-icon">
+              <FaFile />
+            </div>
+            <div className="binary-file-info">
+              <p>Binary File</p>
+              <p>{fileContent.path.split('/').pop()}</p>
+            </div>
+          </div>
+        ) : (
+          // Text Editor
+          <Editor
+            key={`monaco-${fileContent.path}`}
+            height="100%"
+            defaultLanguage={getLanguageFromFileName(fileContent.path)}
+            defaultValue={fileContent.content}
+            onMount={handleEditorDidMount}
+            onChange={handleEditorChange}
+            theme={editorTheme}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              lineNumbers: 'on',
+              renderWhitespace: 'selection',
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              wordWrap: 'on',
+              wrappingIndent: 'indent',
+              tabSize: 2,
+              insertSpaces: true,
+              detectIndentation: true,
+              trimAutoWhitespace: true,
+              renderLineHighlight: 'line',
+              selectionHighlight: true,
+              occurrencesHighlight: 'singleFile',
+              codeLens: false,
+              folding: true,
+              foldingHighlight: true,
+              showFoldingControls: 'mouseover',
+              matchBrackets: 'always',
+              autoIndent: 'full',
+              formatOnPaste: true,
+              formatOnType: true
+            }}
+            className="editor-container editor-tall"
+          />
+        )
+      )}
     </div>
   );
 };

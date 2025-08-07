@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, ConfigDict
 import aiofiles
 import pandas as pd
@@ -560,6 +560,13 @@ async def get_file_content(path: str):
         raise HTTPException(status_code=400, detail="Path is a directory")
     
     try:
+        # Check if it's an image
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type and mime_type.startswith('image/'):
+            # Images are returned directly as files
+            return FileResponse(path, media_type=mime_type)
+            
         # Check if it's an Excel file
         if is_excel_file(path):
             excel_data = read_excel_file(path)
@@ -584,7 +591,12 @@ async def get_file_content(path: str):
                 content = await f.read()
             return FileContent(path=path, content=content, is_binary=False)
         else:
-            return FileContent(path=path, content="[Binary file]", is_binary=True)
+            # Binary file that's not an image
+            return {
+                "path": path,
+                "content": "[Binary file]",
+                "is_binary": True
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
 
