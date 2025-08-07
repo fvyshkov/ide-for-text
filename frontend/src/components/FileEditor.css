@@ -196,9 +196,13 @@
 }
 
 .editor-container {
-  flex: 1;
-  height: calc(100% - 53px);
-  overflow: hidden;
+  height: 100%;
+}
+
+.editor-container.editor-tall {
+  height: calc(7 * 22px); /* 7 строк по 22px */
+  min-height: calc(7 * 22px);
+  max-height: calc(7 * 22px);
 }
 
 /* Monaco editor specific adjustments */

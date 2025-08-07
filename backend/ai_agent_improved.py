@@ -344,7 +344,8 @@ Thought: Let me approach this step by step:
             tools=self.tools,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=5,
+            max_iterations=20,  # Increased from 5 to 20
+            max_execution_time=120,  # Added 2-minute timeout
             return_intermediate_steps=True
         )
         

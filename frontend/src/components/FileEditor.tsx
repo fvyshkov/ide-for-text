@@ -183,7 +183,7 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
         <span className="file-path">{fileContent.path}</span>
       </div>
       
-      <div className="editor-container">
+      <div className="editor-container editor-tall">
         <Editor
           key={`monaco-${fileContent.path}`}
           height="100%"
