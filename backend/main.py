@@ -16,8 +16,8 @@ import aiofiles
 import pandas as pd
 import openpyxl
 
-# AI Agent import
-from ai_agent import get_ai_agent, clear_session
+# AI Agent import - using manager for version switching
+from ai_agent_manager import get_ai_agent, clear_session, get_agent_info
 # import magic  # Temporarily disabled due to libmagic dependency issues
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -160,7 +160,7 @@ async def cleanup_old_connections():
                 continue
                 
             # Remove connections that haven't received a ping in 30 seconds
-            if current_time - conn.last_ping > 30:
+            if current_time - (conn.last_ping or 0) > 30:
                 print(f"Connection {client_id} timed out")
                 to_remove.append(client_id)
                 await conn.close()
@@ -700,6 +700,33 @@ async def test_ai():
     except Exception as e:
         return {"status": "error", "message": f"AI agent error: {str(e)}"}
 
+@app.get("/api/ai/info")
+async def get_ai_info():
+    """Get information about current AI agent configuration"""
+    try:
+        from ai_agent_manager import get_agent_info
+        agent = get_ai_agent()
+        info = get_agent_info()
+        info["agent_class"] = type(agent).__name__
+        
+        # Add library versions for debugging
+        try:
+            import langchain_anthropic
+            info["langchain_anthropic_version"] = getattr(langchain_anthropic, '__version__', 'unknown')
+            info["langchain_anthropic_location"] = langchain_anthropic.__file__
+        except:
+            info["langchain_anthropic_version"] = "import_error"
+            
+        try:
+            import anthropic
+            info["anthropic_version"] = getattr(anthropic, '__version__', 'unknown')
+        except:
+            info["anthropic_version"] = "import_error"
+            
+        return info
+    except Exception as e:
+        return {"status": "error", "message": f"AI agent info error: {str(e)}"}
+
 @app.post("/api/ai/clear-context")
 async def clear_ai_context(session_id: str = "default"):
     """Clear AI conversation context for a session"""
@@ -708,6 +735,11 @@ async def clear_ai_context(session_id: str = "default"):
         return {"status": "ok", "message": f"Context cleared for session: {session_id}"}
     except Exception as e:
         return {"status": "error", "message": f"Error clearing context: {str(e)}"}
+
+@app.get("/api/ai/info")
+async def get_ai_agent_info():
+    """Get information about current AI agent configuration"""
+    return get_agent_info()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

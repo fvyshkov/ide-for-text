@@ -9,7 +9,7 @@ import os
 # Add backend to path
 sys.path.append(os.path.dirname(__file__))
 
-from ai_agent import get_ai_agent
+from ai_agent_manager import get_ai_agent
 
 async def test_simple_query():
     """Test basic AI functionality"""

@@ -98,7 +98,7 @@ Always be helpful, thorough, and complete the requested tasks efficiently."""
             yield {
                 "type": "thinking_start",
                 "content": "Processing your request...",
-                "timestamp": time.time()
+                "timestamp": int(time.time() or 0)
             }
             
             # Build messages list with history
@@ -126,7 +126,7 @@ Always be helpful, thorough, and complete the requested tasks efficiently."""
             yield {
                 "type": "thinking",
                 "content": f"Understanding request: {user_query}",
-                "timestamp": time.time()
+                "timestamp": int(time.time() or 0)
             }
             
             # Process with Claude - may require multiple rounds for tool use
@@ -151,7 +151,7 @@ Always be helpful, thorough, and complete the requested tasks efficiently."""
                             "type": "tool_use",
                             "content": f"Using tool: {tool_call['name']}",
                             "tool_input": tool_call['args'],
-                            "timestamp": time.time()
+                            "timestamp": int(time.time() or 0)
                         }
                         
                         # Execute tool
@@ -170,7 +170,7 @@ Always be helpful, thorough, and complete the requested tasks efficiently."""
                             yield {
                                 "type": "tool_result",
                                 "content": f"Tool result: {tool_result[:500]}..." if len(str(tool_result)) > 500 else f"Tool result: {tool_result}",
-                                "timestamp": time.time()
+                                "timestamp": int(time.time() or 0)
                             }
                             
                             # Add tool result to messages
@@ -190,7 +190,7 @@ Always be helpful, thorough, and complete the requested tasks efficiently."""
             yield {
                 "type": "thinking_complete",
                 "content": "Analysis completed!",
-                "timestamp": time.time()
+                "timestamp": int(time.time() or 0)
             }
             
             # Extract and format final response
@@ -224,14 +224,18 @@ Always be helpful, thorough, and complete the requested tasks efficiently."""
                 "type": "final_result",
                 "content": content_text,
                 "full_result": {"output": content_text},
-                "timestamp": time.time()
+                "timestamp": int(time.time() or 0)
             }
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"ERROR in SimpleAIAgent.analyze: {e}")
+            print(f"ERROR traceback: {error_details}")
             yield {
                 "type": "error",
                 "content": f"Error during analysis: {str(e)}",
-                "timestamp": time.time()
+                "timestamp": int(time.time() or 0)
             }
     
     def clear_context(self):
