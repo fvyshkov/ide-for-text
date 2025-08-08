@@ -14,6 +14,77 @@ This document describes how to integrate MCP (Model Context Protocol) with our e
 - **Backend (FastAPI)**: Hosts the LangChain agent and optionally the MCP server endpoint; continues to provide REST for the frontend.
 - **Frontend (React)**: Unchanged; uses existing REST and WebSocket to display files, images, tables, and agent output.
 
+## Architecture Diagrams
+
+### Component Diagram
+
+```mermaid
+flowchart LR
+    subgraph Frontend["Frontend (React)"]
+      UI[AI Chat + File Tree + Editors]
+    end
+
+    subgraph Backend["Backend (FastAPI)"]
+      REST[REST API / WebSocket]
+      Agent[LangChain Agent / LangGraph]
+      MCPc[MCP Client]
+      Watcher[File Watcher]
+    end
+
+    subgraph MCPServer["MCP Server (in-process or sidecar)"]
+      Tools[Tools]
+      FS[list/read/write/search]
+      EXE[exec.run_python]
+      SYS[system.open_file]
+    end
+
+    subgraph Storage["Resources"]
+      ROOT[project_root]
+      OUT[generated_assets]
+    end
+
+    UI -- REST / WS --> REST
+    REST -- calls --> Agent
+    Agent -- tool adapter --> MCPc
+    MCPc -- protocol --> Tools
+    Tools --> FS
+    Tools --> EXE
+    Tools --> SYS
+    FS <--> ROOT
+    EXE --> OUT
+    Watcher --> REST
+    OUT <--> Watcher
+```
+
+### Sequence (Typical Flow)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend (React)
+    participant B as Backend (FastAPI)
+    participant A as LangChain Agent
+    participant C as MCP Client
+    participant S as MCP Server
+    participant R as Resources (project_root, generated_assets)
+
+    U->>F: "Pie chart of largest planets from planets.xlsx"
+    F->>B: POST /api/chat/message
+    B->>A: analyze(prompt)
+    A->>C: tool: fs.search_files("planets.xlsx")
+    C->>S: MCP request
+    S->>R: search in project_root
+    S-->>C: matches
+    C-->>A: matches
+    A->>C: tool: exec.run_python(code)
+    C->>S: MCP request
+    S->>R: write PNG to generated_assets
+    B->>F: WS event file_changed(path)
+    F->>F: select file in tree, render image
+    A-->>B: Final Answer (path to PNG)
+    B-->>F: stream tokens/thoughts
+```
+
 ## Key Roles
 - **LangChain stays**:
   - Orchestrates ReAct/LangGraph loop.
@@ -81,18 +152,49 @@ This document describes how to integrate MCP (Model Context Protocol) with our e
 
 ## Implementation Plan
 - Backend
-  - Add `backend/mcp_server.py`:
-    - Implement MCP stdio or WS server, register tools/resources backed by existing utilities.
-  - Add `backend/mcp_client.py`:
-    - Minimal client that sends MCP requests and returns results.
-  - Add LangChain tool adapters in `backend/tools/`:
-    - `MCPFileSearchTool`, `MCPFileReadTool`, `MCPFileWriteTool`, `MCPPythonExecTool`.
-  - Update agent wiring in `backend/ai_agent_manager.py`:
-    - Switch to tools backed by the MCP client.
-  - Update `start.sh`:
-    - Start the MCP server alongside the backend; ensure process/port readiness.
+  - Add `backend/mcp_server.py` (Phase 1):
+    - Implement stdio server first (simplest ops model). Export tools: `fs.list_directory`, `fs.read_file`, `fs.write_file`, `fs.search_files`, `exec.run_python`, `system.open_file`.
+    - Bind resources: `project_root`, `generated_assets` with explicit RW policies.
+    - Enforce sandboxing for `exec.run_python` (timeouts, safe builtins, allow‑list imports, write scope limited to `generated_assets`).
+  - Add `backend/mcp_client.py` (Phase 1):
+    - Thin wrapper with `request(tool_name, args)` and typed helpers. Retry/backoff on transport errors.
+  - Add LangChain tool adapters in `backend/tools/` (Phase 2):
+    - `MCPFileSearchTool`, `MCPFileReadTool`, `MCPFileWriteTool`, `MCPPythonExecTool` (strict arg schemas; good docstrings for the LLM).
+  - Update `backend/ai_agent_manager.py` (Phase 2):
+    - Switch the agent’s tool list to MCP adapters behind a feature flag `USE_MCP_TOOLS=true`.
+  - Observability (Phase 2):
+    - Callback handler logs (tool name, args summary, latency, status). Correlate with MCP request IDs.
+  - Start‑up (Phase 1):
+    - Update `start.sh` to launch MCP server (stdio) before FastAPI; add health checks and graceful shutdown.
+
 - Frontend
-  - No changes required (optional: annotate MCP calls in logs).
+  - No functional changes required.
+  - Optional: add a console tab filter for MCP calls (tool, duration, result summary).
+
+- Security & Policies (Phase 1–2)
+  - Implement path allow‑list: deny any path outside `project_root`/`generated_assets`.
+  - Memory/CPU/time caps for `exec.run_python`; kill long‑running processes.
+  - Remove network from `exec.run_python` or gate it behind a separate, audited tool.
+  - Redact sensitive arguments in logs.
+
+- Testing Strategy
+  - Unit tests: tool adapters (argument validation, error propagation), sandbox enforcement.
+  - Integration tests: end‑to‑end prompts → PNG generated and listed in file tree.
+  - Failure injection: missing files, schema mismatch, Python error; verify retries and user‑facing messages.
+
+- Rollout Plan
+  - Phase 1 (MCP server + client skeleton) behind feature flag; DirectAIAgent remains default.
+  - Phase 2 (Agent uses MCP tools) on a dev branch; dogfood with typical prompts (visualization, joins, filters).
+  - Phase 3 (Remove legacy direct tool wiring) after parity achieved; keep DirectAIAgent only for debugging.
+
+- Configuration
+  - Env vars: `USE_MCP_TOOLS`, `MCP_STDIO=1` (or `MCP_WS_URL`), `MCP_TIMEOUT_SEC`, `PY_EXEC_TIMEOUT_SEC`.
+  - Paths: `PROJECT_ROOT`, `GENERATED_ASSETS` (default to `test-directory/` subfolders).
+
+- Deliverables
+  - Code: `mcp_server.py`, `mcp_client.py`, MCP tool adapters, agent wiring.
+  - Docs: usage guide for external MCP clients (Claude Desktop/CLI), internal dev guide.
+  - Demos: scripts/requests showcasing file search → python exec → image output.
 
 ## Tool Interface (conceptual)
 - `fs.search_files`
