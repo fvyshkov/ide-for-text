@@ -192,6 +192,7 @@ class AIAnalysisRequest(BaseModel):
     query: str
     project_path: Optional[str] = None
     reset_context: bool = False
+    file_paths: Optional[List[str]] = None
 
     model_config = ConfigDict(
         json_schema_extra = {
@@ -780,7 +781,12 @@ async def analyze_with_ai(request: AIAnalysisRequest):
         
         async def generate_stream():
             """Generate streaming response"""
-            async for thought in agent.analyze(request.query, request.project_path, reset_context):
+            async for thought in agent.analyze(
+                request.query,
+                request.project_path,
+                reset_context,
+                request.file_paths,
+            ):
                 # Format as Server-Sent Events
                 data = json.dumps(thought)
                 yield f"data: {data}\n\n"

@@ -380,7 +380,7 @@ class DirectAIAgent:
         """Clear conversation history (placeholder for compatibility)"""
         print("Context cleared")
     
-    async def analyze(self, query: str, project_path: Optional[str] = None, reset_context: bool = False) -> AsyncGenerator[Dict[str, Any], None]:
+    async def analyze(self, query: str, project_path: Optional[str] = None, reset_context: bool = False, attached_file_paths: Optional[List[str]] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Analyze user query with direct tool usage and tool chaining
         
@@ -408,6 +408,14 @@ class DirectAIAgent:
             data_dir = os.path.join(self.project_root, project_path) if project_path else self.data_dir
             output_dir = data_dir  # Default output directory
             
+            # Normalize attached file paths (if provided)
+            explicit_attached_files: List[str] = []
+            if attached_file_paths:
+                for p in attached_file_paths:
+                    abs_p = p if os.path.isabs(p) else os.path.join(self.project_root, p)
+                    if os.path.exists(abs_p):
+                        explicit_attached_files.append(abs_p)
+
             # Step 1: Analyze the query to determine intent
             data_operations = ['анализ', 'analyze', 'график', 'chart', 'plot', 'визуализация', 'visualization',
                               'преобразуй', 'transform', 'сравни', 'compare', 'статистика', 'statistics',
@@ -426,8 +434,17 @@ class DirectAIAgent:
             
             # Step 2: For data operations, we need to find relevant data files first
             data_files = []
+
+            # If user attached files in chips, they take precedence
+            if explicit_attached_files:
+                data_files.extend(explicit_attached_files)
+                yield {
+                    "type": "tool_result",
+                    "content": f"Using attached files: {', '.join(explicit_attached_files)}",
+                    "timestamp": int(time.time())
+                }
             
-            if is_data_operation:
+            if is_data_operation and not data_files:
                 # First, check for explicit file references in the query
                 import re
                 file_pattern = r'(\w+\.(xlsx|xls|csv|json))'
