@@ -338,6 +338,10 @@ function App() {
         ref={aiChatRef}
         currentFile={selectedFile || undefined}
         projectPath={rootPath || undefined}
+        onFileGenerated={(path: string) => {
+          setSelectedFile(path);
+          loadFileContent(path);
+        }}
       />
     </div>
   ), [selectedFile, rootPath]);

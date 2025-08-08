@@ -24,10 +24,11 @@ interface AIChatProps {
   // Future: add props for current file context, project context, etc.
   currentFile?: string;
   projectPath?: string;
+  onFileGenerated?: (path: string) => void;
 }
 
 const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIChatProps>((props, ref) => {
-  const { currentFile, projectPath } = props;
+  const { currentFile, projectPath, onFileGenerated } = props;
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -229,6 +230,10 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
                     };
 
                     setMessages(prev => [...prev, fileMessage]);
+                    // Notify parent to open the generated file
+                    if (typeof onFileGenerated === 'function' && event.path) {
+                      onFileGenerated(event.path);
+                    }
                   }
                 }
               } catch (e) {
