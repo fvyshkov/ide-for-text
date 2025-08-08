@@ -320,16 +320,60 @@ class CodeExecutor:
     """Execute Python code for analysis and visualization"""
     name = "code_executor"
     
-    def _run(self, code: str) -> str:
-        """Execute Python code safely"""
+    def _run(self, code: str, working_dir: Optional[str] = None) -> str:
+        """Execute Python code safely in an optional working directory.
+        If working_dir is provided, it becomes the temporary cwd so that relative
+        paths (e.g., plt.savefig("chart.png")) save files into the project folder.
+        Also patches matplotlib savefig to print an absolute path for discovery.
+        """
         try:
-            # Create execution environment with necessary modules
+            # Configure headless backend for matplotlib and import
+            import matplotlib
+            matplotlib.use('Agg')  # Non-interactive backend
             import matplotlib.pyplot as plt
+            from matplotlib.figure import Figure
             import numpy as np
             import os
             import json
             import time
             
+            # Prepare working directory
+            original_cwd = os.getcwd()
+            if working_dir:
+                try:
+                    os.makedirs(working_dir, exist_ok=True)
+                    os.chdir(working_dir)
+                except Exception:
+                    pass
+
+            # Patch savefig to announce saved paths
+            original_plt_savefig = plt.savefig
+            saved_paths: list[str] = []
+            def _patched_plt_savefig(fname, *args, **kwargs):
+                result = original_plt_savefig(fname, *args, **kwargs)
+                try:
+                    abs_path = os.path.abspath(fname)
+                    print(f"CodeExecutor: Saved to: {abs_path}")
+                    saved_paths.append(abs_path)
+                except Exception:
+                    pass
+                return result
+            plt.savefig = _patched_plt_savefig
+
+            # Also patch Figure.savefig
+            original_fig_savefig = getattr(Figure, 'savefig', None)
+            if callable(original_fig_savefig):
+                def _patched_fig_savefig(self, fname, *args, **kwargs):
+                    out = original_fig_savefig(self, fname, *args, **kwargs)
+                    try:
+                        abs_path = os.path.abspath(fname)
+                        print(f"CodeExecutor: Saved to: {abs_path}")
+                        saved_paths.append(abs_path)
+                    except Exception:
+                        pass
+                    return out
+                Figure.savefig = _patched_fig_savefig
+
             exec_globals = {
                 'pd': pd,
                 'pandas': pd,
@@ -351,10 +395,39 @@ class CodeExecutor:
             
             try:
                 exec(code, exec_globals)
+                # Auto-save any open figures if none were explicitly saved
+                try:
+                    if not saved_paths:
+                        fig_nums = plt.get_fignums()
+                        if fig_nums:
+                            timestamp = int(time.time())
+                            for idx, num in enumerate(fig_nums, start=1):
+                                fig = plt.figure(num)
+                                auto_name = f"figure_{timestamp}_{idx}.png"
+                                fig.savefig(auto_name)
+                    # Flush prints from auto-save into buffer
+                except Exception:
+                    pass
                 output = buffer.getvalue()
                 return f"Code executed successfully.\nOutput:\n{output}" if output else "Code executed successfully (no output)."
             finally:
                 sys.stdout = old_stdout
+                # Cleanup plt state and restore cwd/patches
+                try:
+                    plt.close('all')
+                except Exception:
+                    pass
+                try:
+                    # Restore patched symbols
+                    plt.savefig = original_plt_savefig
+                    if callable(original_fig_savefig):
+                        Figure.savefig = original_fig_savefig
+                except Exception:
+                    pass
+                try:
+                    os.chdir(original_cwd)
+                except Exception:
+                    pass
                 
         except Exception as e:
             return f"Error executing code: {str(e)}"
@@ -520,13 +593,72 @@ class DirectAIAgent:
         candidates: List[str] = []
         for line in log.splitlines():
             lower = line.lower()
-            if "saved to:" in lower or "saved to" in lower or "сохранен" in lower:
-                path = line.split(":", 1)[-1].strip()
+            if ("saved to" in lower) or ("сохранен" in lower) or ("сохранён" in lower):
+                # Extract the path after the marker (handles extra prefix like "CodeExecutor:")
+                m = re.search(r"(?:saved to|сохранен|сохранён)\s*:?\s*(.+)$", lower, re.IGNORECASE)
+                raw_path = None
+                if m:
+                    # Use original line slice to preserve case
+                    start = m.start(1)
+                    raw_path = line[start:].strip()
+                else:
+                    # Fallback: last colon split
+                    parts = line.rsplit(":", 1)
+                    if len(parts) == 2:
+                        raw_path = parts[-1].strip()
+                if not raw_path:
+                    continue
+                # Remove wrapping quotes if present
+                raw_path = raw_path.strip('"\'')
+                path = raw_path
                 if not os.path.isabs(path):
                     path = os.path.join(base_dir, path)
                 if os.path.exists(path):
                     candidates.append(path)
         return candidates
+
+    def _scan_recent_images(self, directory: str, seconds: int = 120) -> List[str]:
+        """Find recently modified image files in a directory as a safety net."""
+        exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg'}
+        now = time.time()
+        found: List[str] = []
+        try:
+            for name in os.listdir(directory):
+                p = os.path.join(directory, name)
+                if not os.path.isfile(p):
+                    continue
+                if os.path.splitext(name)[1].lower() in exts:
+                    try:
+                        if now - os.path.getmtime(p) <= seconds:
+                            found.append(p)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return found
+
+    def _ensure_in_output_dir(self, path: str, output_dir: str) -> str:
+        """Move file into output_dir if it's outside. Return final absolute path."""
+        try:
+            abs_path = os.path.abspath(path)
+            output_dir_abs = os.path.abspath(output_dir)
+            os.makedirs(output_dir_abs, exist_ok=True)
+            if abs_path.startswith(output_dir_abs + os.sep):
+                return abs_path
+            # Move with safe name
+            base_name = os.path.basename(abs_path)
+            safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", base_name)
+            target = os.path.join(output_dir_abs, safe_name)
+            if abs_path != target:
+                try:
+                    os.replace(abs_path, target)
+                except Exception:
+                    # Fallback: copy
+                    import shutil
+                    shutil.copy2(abs_path, target)
+            return os.path.abspath(target)
+        except Exception:
+            return path
 
     def _safe_b64decode(self, data: str) -> str:
         """Decode Base64 safely by normalizing whitespace and padding."""
@@ -685,12 +817,19 @@ class DirectAIAgent:
                     if action == "run_python" and decision.get("code"):
                         code = decision["code"]
                         os.makedirs(output_dir, exist_ok=True)
-                        code_result = self.tools[2]._run(code)
+                        code_result = self.tools[2]._run(code, working_dir=output_dir)
                         yield {"type": "tool_result", "content": code_result, "timestamp": int(time.time())}
                         created_paths = self._extract_output_paths_from_log(code_result, output_dir)
                         if created_paths:
                             for p in created_paths:
-                                yield {"type": "file_changed", "path": p}
+                                final_p = self._ensure_in_output_dir(p, output_dir)
+                                yield {"type": "file_changed", "path": final_p}
+                        else:
+                            # Fallback: scan directory for recent images
+                            recent = self._scan_recent_images(output_dir)
+                            for p in recent:
+                                final_p = self._ensure_in_output_dir(p, output_dir)
+                                yield {"type": "file_changed", "path": final_p}
                         # Safety net: also salvage result.txt if the tool happened to write it
                         salvaged_path = self._salvage_result_file(output_dir)
                         if salvaged_path:
@@ -1401,8 +1540,8 @@ transformed_df.to_csv(output_path, index=False)
 print(f"Transformed data saved to: {{output_path}}")
 """
 
-                # Execute the generated code
-                code_result = self.tools[2]._run(python_code)
+                # Execute the generated code in the output directory
+                code_result = self.tools[2]._run(python_code, working_dir=output_dir)
                 
                 yield {
                     "type": "tool_result",
@@ -1413,6 +1552,15 @@ print(f"Transformed data saved to: {{output_path}}")
                 # Check if file was created successfully
                 output_path = os.path.join(output_dir, output_filename)
                 success = os.path.exists(output_path)
+                if not success:
+                    # Heuristic: parse executor output for saved paths, or scan dir
+                    created_paths = self._extract_output_paths_from_log(code_result, output_dir)
+                    recent = self._scan_recent_images(output_dir)
+                    for p in created_paths + recent:
+                        if os.path.exists(p):
+                            success = True
+                            output_path = p
+                            yield {"type": "file_changed", "path": p}
                 
                 # Final result message based on operation type and success
                 result_message = ""
