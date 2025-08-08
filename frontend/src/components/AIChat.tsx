@@ -37,6 +37,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
     }
   ]);
   const [inputValue, setInputValue] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -58,6 +59,22 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
       const newHeight = Math.min(textarea.scrollHeight, maxHeight);
       textarea.style.height = `${newHeight}px`;
     }
+  };
+
+  const removeAttachment = (path: string) => {
+    setAttachedFiles(prev => prev.filter(p => p !== path));
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    const text = e.dataTransfer.getData('text/plain');
+    if (text) {
+      setAttachedFiles(prev => Array.from(new Set([...prev, text])));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
   };
 
   const scrollToBottom = () => {
@@ -88,7 +105,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
     const userMessage: Message = {
       id: Date.now().toString(),
       type: 'user',
-      content: messageText.trim(),
+      content: messageText.trim() + (attachedFiles.length ? `\n\nFiles: ${attachedFiles.map(p => `@${p}`).join(' ')}` : ''),
       timestamp: new Date()
     };
 
@@ -113,7 +130,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
         },
         body: JSON.stringify({
           query: originalInput,
-          file_paths: currentFile ? [currentFile] : undefined,
+          file_paths: attachedFiles.length ? attachedFiles : (currentFile ? [currentFile] : undefined),
           project_path: projectPath
         }),
       });
@@ -232,6 +249,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setAttachedFiles([]);
     }
   };
 
@@ -385,28 +403,44 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
 
       <div className="ai-chat-input">
         <div className="input-container">
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={(e) => {
-              setInputValue(e.target.value);
-              // Trigger resize on next tick to ensure state is updated
-              setTimeout(adjustTextareaHeight, 0);
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask me about your code, project, or anything else..."
-            className="chat-textarea"
-            rows={1}
-            disabled={isLoading}
-          />
-          <button
-            onClick={() => handleSendMessage()}
-            disabled={!inputValue.trim() || isLoading}
-            className="send-button"
-            title="Send message (Enter)"
-          >
-            <FaPaperPlane />
-          </button>
+          {/* Attachments (chips) */}
+          {attachedFiles.length > 0 && (
+            <div className="attached-files">
+              {attachedFiles.map((p) => (
+                <span key={p} className="file-chip" title={p}>
+                  <span className="file-chip-name">{p.split('/').pop()}</span>
+                  <button className="file-chip-remove" onClick={() => removeAttachment(p)} aria-label="Remove file">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="prompt-row">
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => {
+                setInputValue(e.target.value);
+                // Trigger resize on next tick to ensure state is updated
+                setTimeout(adjustTextareaHeight, 0);
+              }}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask me about your code, project, or anything else..."
+              className="chat-textarea"
+              rows={1}
+              disabled={isLoading}
+            />
+            <button
+              onClick={() => handleSendMessage()}
+              disabled={!inputValue.trim() || isLoading}
+              className="send-button"
+              title="Send message (Enter)"
+            >
+              <FaPaperPlane />
+            </button>
+          </div>
         </div>
         <div className="input-hint">
           Press Enter to send, Shift+Enter for new line

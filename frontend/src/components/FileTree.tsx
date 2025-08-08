@@ -30,12 +30,24 @@ const TreeNode: React.FC<TreeNodeProps> = ({ item, onFileSelect, selectedFile, l
     }
   };
 
+  const handleDragStart = (e: React.DragEvent) => {
+    if (item.is_directory) return;
+    // Put absolute path as plain text to be consumed by drop targets
+    e.dataTransfer.setData('text/plain', item.path);
+    // Custom type for potential future extensions
+    e.dataTransfer.setData('application/x-ide-filepath', item.path);
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
   return (
     <div className="tree-node">
       <div
         className={`tree-node-content ${isSelected ? 'selected' : ''}`}
         style={{ paddingLeft: `${level * 20}px` }}
         onClick={handleClick}
+        draggable={!item.is_directory}
+        onDragStart={handleDragStart}
+        title={item.is_directory ? undefined : 'Drag to prompt input'}
       >
         <div className="tree-node-icon">
           {item.is_directory ? (
