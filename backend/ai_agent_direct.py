@@ -528,6 +528,25 @@ class DirectAIAgent:
                     candidates.append(path)
         return candidates
 
+    def _safe_b64decode(self, data: str) -> str:
+        """Decode Base64 safely by normalizing whitespace and padding."""
+        try:
+            if data is None:
+                return ""
+            # Remove whitespace/newlines
+            compact = re.sub(r"\s+", "", data)
+            # Add padding if missing
+            padding = (-len(compact)) % 4
+            if padding:
+                compact += "=" * padding
+            return base64.b64decode(compact).decode("utf-8", errors="replace")
+        except Exception:
+            # Last resort: return raw text fallback
+            try:
+                return base64.b64decode(data + "===").decode("utf-8", errors="replace")
+            except Exception:
+                return ""
+
     def _salvage_result_file(self, output_dir: str, candidate_path: Optional[str] = None) -> Optional[str]:
         """If result.txt (or candidate) contains JSON with content_base64, decode and write final file.
         Returns the new file path if created, else None.
@@ -692,7 +711,7 @@ class DirectAIAgent:
                         print(f"DEBUG: out_path = {out_path}")
                         if decision.get("content_base64"):
                             print(f"DEBUG: content_base64 length = {len(decision['content_base64'])}")
-                            decoded = base64.b64decode(decision["content_base64"]).decode("utf-8", errors="replace")
+                            decoded = self._safe_b64decode(decision["content_base64"]) 
                             with open(out_path, 'w', encoding='utf-8') as f:
                                 f.write(decoded)
                         else:
@@ -704,7 +723,7 @@ class DirectAIAgent:
                         print(f"DEBUG: checking for nested JSON, decision has content_base64: {bool(decision.get('content_base64'))}")
                         if decision.get("content_base64"):
                             try:
-                                decoded_content = base64.b64decode(decision["content_base64"]).decode("utf-8", errors="replace")
+                                decoded_content = self._safe_b64decode(decision["content_base64"]) 
                                 print(f"DEBUG: decoded content preview = {decoded_content[:200]}")
                                 if '"filename"' in decoded_content and '"content_base64"' in decoded_content:
                                     print("DEBUG: found nested JSON in decoded content, attempting to parse")
@@ -714,7 +733,7 @@ class DirectAIAgent:
                                         if nested_json.get("filename") and nested_json.get("content_base64"):
                                             final_name = re.sub(r"[^a-zA-Z0-9._-]", "_", nested_json["filename"])
                                             final_path = os.path.join(output_dir, final_name)
-                                            final_content = base64.b64decode(nested_json["content_base64"]).decode("utf-8", errors="replace")
+                                            final_content = self._safe_b64decode(nested_json["content_base64"]) 
                                             with open(final_path, 'w', encoding='utf-8') as f:
                                                 f.write(final_content)
                                             print(f"DEBUG: extracted nested content to {final_path}")
