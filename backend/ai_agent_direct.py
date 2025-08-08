@@ -8,6 +8,7 @@ import json
 import asyncio
 import re
 from typing import AsyncGenerator, Dict, Any, Optional, List
+import base64
 from dotenv import load_dotenv
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -379,6 +380,239 @@ class DirectAIAgent:
     def clear_context(self):
         """Clear conversation history (placeholder for compatibility)"""
         print("Context cleared")
+
+    def _build_context_manifest(self, file_paths: List[str]) -> Dict[str, Any]:
+        """Build a compact manifest + previews for attached files.
+        - Text: up to 32KB, else head/tail 8KB
+        - CSV/Excel: columns, dtypes, first 10 rows
+        - Other: basic metadata only
+        """
+        manifest: Dict[str, Any] = {"files": []}
+        import mimetypes
+        for p in file_paths:
+            item: Dict[str, Any] = {"path": p, "name": os.path.basename(p), "size": os.path.getsize(p)}
+            mime, _ = mimetypes.guess_type(p)
+            item["mime"] = mime or "unknown"
+            try:
+                if p.lower().endswith(('.txt', '.md', '.text')):
+                    with open(p, 'r', encoding='utf-8', errors='ignore') as f:
+                        data = f.read()
+                    if len(data) <= 32_768:
+                        item["preview_text"] = data
+                    else:
+                        head = data[:8_192]
+                        tail = data[-8_192:]
+                        item["preview_text"] = head + "\n...\n" + tail
+                elif p.lower().endswith(('.csv',)):
+                    import pandas as pd
+                    df = pd.read_csv(p)
+                    item["columns"] = df.columns.tolist()
+                    item["dtypes"] = {c: str(t) for c, t in df.dtypes.items()}
+                    item["preview_rows"] = df.head(10).to_dict(orient='records')
+                elif p.lower().endswith(('.xlsx', '.xls')):
+                    import pandas as pd
+                    df = pd.read_excel(p)
+                    item["columns"] = df.columns.tolist()
+                    item["dtypes"] = {c: str(t) for c, t in df.dtypes.items()}
+                    item["preview_rows"] = df.head(10).to_dict(orient='records')
+            except Exception as e:
+                item["preview_error"] = str(e)
+            manifest["files"].append(item)
+        return manifest
+
+    def _decide_action_with_llm(self, query: str, context_manifest: Dict[str, Any]) -> Dict[str, Any]:
+        """Ask LLM to choose an action: write_file(content, filename) or run_python(code).
+        The LLM must return strict JSON. Important constraints:
+        - For translation, summarization, rewriting, extraction and any text-only tasks → use write_file.
+        - DO NOT use external libraries in code (no googletrans, no network). Allowed libs: pandas, numpy, matplotlib.
+        - Code must read only provided files and write outputs only into provided output directory.
+        """
+        from anthropic import Anthropic
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+        client = Anthropic(api_key=api_key)
+        system = (
+            "You are an autonomous coding assistant. Use the attached file context to complete the task.\n"
+            "Rules:\n"
+            "- If the task is translation, summarization, rewriting, extraction or any other text-only transformation: "
+            "return action write_file with the resulting text encoded as UTF-8 Base64 in 'content_base64' and a reasonable 'filename'. DO NOT return code for these tasks.\n"
+            "- Only return run_python for data analysis/visualization/transformation that benefits from pandas/numpy/matplotlib.\n"
+            "- Never use external libraries (e.g., googletrans, requests to remote APIs). No network access.\n"
+            "- Read only the provided files. Outputs must be written under the project output directory (the host will handle saving).\n"
+            "Return STRICT JSON with one of two shapes: {\"action\":\"write_file\", \"filename\":string, \"content_base64\":string, \"explain\":string} "
+            "or {\"action\":\"run_python\", \"code\":string, \"explain\":string}. Do not include markdown, backticks or extra text."
+        )
+        user = (
+            "User query:\n" + query + "\n\n" +
+            "Attached files manifest (JSON):\n" + json.dumps(context_manifest, ensure_ascii=False) + "\n\n" +
+            "Choose and return STRICT JSON now."
+        )
+        resp = client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=8192,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        text = "".join([blk.text if hasattr(blk, "text") else blk.get("text", "") for blk in resp.content])
+        print(f"DEBUG: LLM raw response length = {len(text)}")
+        print(f"DEBUG: LLM raw response preview = {text[:200]}...{text[-200:]}")
+
+        def try_parse(s: str) -> Optional[Dict[str, Any]]:
+            try:
+                return json.loads(s)
+            except Exception:
+                return None
+
+        cleaned = text.strip()
+        # Strip ```json ... ``` or ``` ... ``` fences
+        fence_match = re.match(r"^```(?:json)?\n([\s\S]*?)\n```$", cleaned)
+        if fence_match:
+            cleaned = fence_match.group(1).strip()
+
+        # 1) Direct parse
+        parsed = try_parse(cleaned)
+        if parsed is not None:
+            return parsed
+
+        # 2) Extract JSON object substring
+        m = re.search(r"\{[\s\S]*\}", cleaned)
+        if m:
+            parsed = try_parse(m.group(0))
+            if parsed is not None:
+                return parsed
+
+        # 2.5) Heuristic fast-path: if content_base64 marker exists, extract by regex even if JSON is broken
+        if '"content_base64"' in cleaned:
+            fname_match = re.search(r'"filename"\s*:\s*"([^\"]+)"', cleaned, re.DOTALL)
+            b64_match = re.search(r'"content_base64"\s*:\s*"([\s\S]*?)"', cleaned, re.DOTALL)
+            if b64_match:
+                raw_b64 = re.sub(r"\s+", "", b64_match.group(1))
+                fname = fname_match.group(1) if fname_match else "result.txt"
+                return {"action": "write_file", "filename": fname, "content_base64": raw_b64, "explain": "heuristic extraction"}
+
+        # 3) Salvage JSON by extracting fields with regex (handles unescaped newlines inside base64)
+        try:
+            action_m = re.search(r'"action"\s*:\s*"([a-zA-Z_]+)"', cleaned)
+            filename_m = re.search(r'"filename"\s*:\s*"([^"]+)"', cleaned)
+            content_b64_m = re.search(r'"content_base64"\s*:\s*"([\s\S]*?)"', cleaned)
+            code_m = re.search(r'"code"\s*:\s*"([\s\S]*?)"', cleaned)
+            if action_m and action_m.group(1) == 'write_file' and content_b64_m:
+                raw_b64 = content_b64_m.group(1)
+                raw_b64 = re.sub(r'\s+', '', raw_b64)
+                fname = filename_m.group(1) if filename_m else 'result.txt'
+                return {"action": "write_file", "filename": fname, "content_base64": raw_b64, "explain": "salvaged from non-strict JSON"}
+            if action_m and action_m.group(1) == 'run_python' and code_m:
+                # Remove surrounding fences if any inside code
+                code_text = code_m.group(1)
+                code_text = re.sub(r'^```[a-zA-Z]*\n', '', code_text)
+                code_text = re.sub(r'\n```$', '', code_text)
+                return {"action": "run_python", "code": code_text, "explain": "salvaged from non-strict JSON"}
+        except Exception:
+            pass
+
+        # 4) Final fallback: treat model output as final text to write (base64)
+        b64 = base64.b64encode(cleaned.encode("utf-8")).decode("ascii")
+        return {"action": "write_file", "filename": "result.txt", "content_base64": b64, "explain": "fallback: direct text from model"}
+
+    def _extract_output_paths_from_log(self, log: str, base_dir: str) -> List[str]:
+        """Heuristically find created file paths in executor logs."""
+        candidates: List[str] = []
+        for line in log.splitlines():
+            lower = line.lower()
+            if "saved to:" in lower or "saved to" in lower or "сохранен" in lower:
+                path = line.split(":", 1)[-1].strip()
+                if not os.path.isabs(path):
+                    path = os.path.join(base_dir, path)
+                if os.path.exists(path):
+                    candidates.append(path)
+        return candidates
+
+    def _salvage_result_file(self, output_dir: str, candidate_path: Optional[str] = None) -> Optional[str]:
+        """If result.txt (or candidate) contains JSON with content_base64, decode and write final file.
+        Returns the new file path if created, else None.
+        """
+        paths_to_check: List[str] = []
+        if candidate_path:
+            paths_to_check.append(candidate_path)
+        paths_to_check.append(os.path.join(output_dir, "result.txt"))
+        for path in paths_to_check:
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    data = f.read()
+                if '"content_base64"' not in data:
+                    continue
+                # Extract fields
+                fname_match = re.search(r'"filename"\s*:\s*"([^\"]+)"', data, re.DOTALL)
+                b64_match = re.search(r'"content_base64"\s*:\s*"([\s\S]*?)"', data, re.DOTALL)
+                if not b64_match:
+                    continue
+                raw_b64 = re.sub(r"\s+", "", b64_match.group(1))
+                decoded = base64.b64decode(raw_b64).decode('utf-8', errors='replace')
+                safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", fname_match.group(1) if fname_match else "result.txt")
+                final_path = os.path.join(output_dir, safe_name)
+                with open(final_path, 'w', encoding='utf-8') as fw:
+                    fw.write(decoded)
+                # Remove the JSON container file if it was result.txt
+                if os.path.basename(path) == 'result.txt':
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
+                return final_path
+            except Exception:
+                continue
+        return None
+
+    def _detect_target_lang(self, query_text: str) -> str:
+        """Detect target language code from user query (simple heuristics)."""
+        q = query_text.lower()
+        if "на рус" in q or "to russian" in q or "into russian" in q or "russian" in q:
+            return "ru"
+        if "на англ" in q or "to english" in q or "into english" in q or "english" in q:
+            return "en"
+        # Default: if query is Russian, translate to English, else to Russian
+        cyrillic = any('а' <= ch <= 'я' or 'А' <= ch <= 'Я' for ch in q)
+        return "en" if cyrillic else "ru"
+
+    def _translate_with_claude(self, text: str, target_lang: str) -> str:
+        """Translate text using Anthropic Claude. Returns translated text or raises.
+        Note: Kept for potential future use if LLM decision returns write_file with translation.
+        """
+        try:
+            from anthropic import Anthropic
+        except Exception as e:
+            raise RuntimeError(f"Anthropic SDK not available: {e}")
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+        client = Anthropic(api_key=api_key)
+        system_prompt = (
+            "You are a high-quality translator. Preserve original formatting, whitespace, and lists. "
+            "Do not add explanations. Output only the translated text."
+        )
+        # Map codes to natural names
+        lang_name = "Russian" if target_lang == "ru" else "English"
+        user_prompt = f"Translate the following text into {lang_name} and output only the translation:\n\n{text}"
+
+        resp = client.messages.create(
+            model="claude-3-5-sonnet-20240620",
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        # Claude returns content blocks; join as string
+        parts = []
+        for block in resp.content:
+            if hasattr(block, "text"):
+                parts.append(block.text)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts).strip()
     
     async def analyze(self, query: str, project_path: Optional[str] = None, reset_context: bool = False, attached_file_paths: Optional[List[str]] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -416,6 +650,99 @@ class DirectAIAgent:
                     if os.path.exists(abs_p):
                         explicit_attached_files.append(abs_p)
 
+            # If user attached files: build context manifest and ask LLM to decide action
+            if explicit_attached_files:
+                yield {"type": "tool_use", "content": f"Attached files provided: {len(explicit_attached_files)}", "timestamp": int(time.time())}
+
+                context_manifest = self._build_context_manifest(explicit_attached_files)
+                decision = None
+                try:
+                    decision = self._decide_action_with_llm(query, context_manifest)
+                except Exception as e:
+                    yield {"type": "tool_result", "content": f"LLM decision error: {e}", "timestamp": int(time.time())}
+
+                if isinstance(decision, dict) and decision.get("action"):
+                    action = decision.get("action")
+                    if action == "run_python" and decision.get("code"):
+                        code = decision["code"]
+                        os.makedirs(output_dir, exist_ok=True)
+                        code_result = self.tools[2]._run(code)
+                        yield {"type": "tool_result", "content": code_result, "timestamp": int(time.time())}
+                        created_paths = self._extract_output_paths_from_log(code_result, output_dir)
+                        if created_paths:
+                            for p in created_paths:
+                                yield {"type": "file_changed", "path": p}
+                        # Safety net: also salvage result.txt if the tool happened to write it
+                        salvaged_path = self._salvage_result_file(output_dir)
+                        if salvaged_path:
+                            yield {"type": "file_changed", "path": salvaged_path}
+                        yield {"type": "final_result", "content": decision.get("explain", "Operation completed"), "timestamp": int(time.time())}
+                        yield {"type": "thinking_complete", "content": "✓ Completed via LLM decision", "timestamp": int(time.time())}
+                        return
+                    elif action == "write_file" and (decision.get("content_base64") or decision.get("content")):
+                        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+                        suggested = decision.get("filename") or f"result_{timestamp_str}.txt"
+                        safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", suggested)
+                        os.makedirs(output_dir, exist_ok=True)
+                        out_path = os.path.join(output_dir, safe_name)
+                        # Prefer base64 to avoid control character issues
+                        print(f"DEBUG: write_file decision = {decision}")
+                        print(f"DEBUG: suggested filename = {suggested}")
+                        print(f"DEBUG: safe_name = {safe_name}")
+                        print(f"DEBUG: out_path = {out_path}")
+                        if decision.get("content_base64"):
+                            print(f"DEBUG: content_base64 length = {len(decision['content_base64'])}")
+                            decoded = base64.b64decode(decision["content_base64"]).decode("utf-8", errors="replace")
+                            with open(out_path, 'w', encoding='utf-8') as f:
+                                f.write(decoded)
+                        else:
+                            print(f"DEBUG: regular content length = {len(decision.get('content', ''))}")
+                            with open(out_path, 'w', encoding='utf-8') as f:
+                                f.write(decision["content"])
+                        # Safety net: if the file ended up being a JSON plan, salvage to proper file
+                        # Also check if the decoded content itself contains a JSON plan
+                        print(f"DEBUG: checking for nested JSON, decision has content_base64: {bool(decision.get('content_base64'))}")
+                        if decision.get("content_base64"):
+                            try:
+                                decoded_content = base64.b64decode(decision["content_base64"]).decode("utf-8", errors="replace")
+                                print(f"DEBUG: decoded content preview = {decoded_content[:200]}")
+                                if '"filename"' in decoded_content and '"content_base64"' in decoded_content:
+                                    print("DEBUG: found nested JSON in decoded content, attempting to parse")
+                                    nested_match = re.search(r'\{"action".*\}', decoded_content, re.DOTALL)
+                                    if nested_match:
+                                        nested_json = json.loads(nested_match.group())
+                                        if nested_json.get("filename") and nested_json.get("content_base64"):
+                                            final_name = re.sub(r"[^a-zA-Z0-9._-]", "_", nested_json["filename"])
+                                            final_path = os.path.join(output_dir, final_name)
+                                            final_content = base64.b64decode(nested_json["content_base64"]).decode("utf-8", errors="replace")
+                                            with open(final_path, 'w', encoding='utf-8') as f:
+                                                f.write(final_content)
+                                            print(f"DEBUG: extracted nested content to {final_path}")
+                                            # Remove the temporary result.txt
+                                            try:
+                                                os.remove(out_path)
+                                                print(f"DEBUG: removed temporary file {out_path}")
+                                            except:
+                                                pass
+                                            salvaged_path = final_path
+                                        else:
+                                            salvaged_path = self._salvage_result_file(output_dir, candidate_path=out_path)
+                                    else:
+                                        salvaged_path = self._salvage_result_file(output_dir, candidate_path=out_path)
+                                else:
+                                    salvaged_path = self._salvage_result_file(output_dir, candidate_path=out_path)
+                            except Exception as e:
+                                print(f"DEBUG: error processing nested JSON: {e}")
+                                salvaged_path = self._salvage_result_file(output_dir, candidate_path=out_path)
+                        else:
+                            salvaged_path = self._salvage_result_file(output_dir, candidate_path=out_path)
+                        yield {"type": "file_changed", "path": salvaged_path or out_path}
+                        yield {"type": "final_result", "content": f"Result saved to {(os.path.basename(salvaged_path) if salvaged_path else safe_name)}", "timestamp": int(time.time())}
+                        yield {"type": "thinking_complete", "content": "✓ Completed via LLM decision", "timestamp": int(time.time())}
+                        return
+                    else:
+                        yield {"type": "tool_result", "content": f"LLM returned no actionable plan; falling back.", "timestamp": int(time.time())}
+
             # Step 1: Analyze the query to determine intent
             data_operations = ['анализ', 'analyze', 'график', 'chart', 'plot', 'визуализация', 'visualization',
                               'преобразуй', 'transform', 'сравни', 'compare', 'статистика', 'statistics',
@@ -424,8 +751,11 @@ class DirectAIAgent:
             file_operations = ['read', 'открой', 'list', 'покажи', 'найди', 'find', 'search']
             
             # Determine operation type
-            is_data_operation = any(keyword in query.lower() for keyword in data_operations)
-            is_file_operation = any(keyword in query.lower() for keyword in file_operations)
+            ql = query.lower()
+            is_data_operation = any(keyword in ql for keyword in data_operations)
+            is_file_operation = any(keyword in ql for keyword in file_operations)
+            # Keep legacy intent flags for fallback paths
+            is_translate_intent = any(k in ql for k in ["переведи", "перевод", "translate"]) and False
             
             # Отладочный print
             print(f"DEBUG: is_data_operation = {is_data_operation}")
@@ -444,9 +774,46 @@ class DirectAIAgent:
                     "timestamp": int(time.time())
                 }
             
+            # Translation path takes precedence if there are attached files
+            if False and is_translate_intent and explicit_attached_files:
+                main_file = explicit_attached_files[0]
+                yield {
+                    "type": "tool_use",
+                    "content": f"Translating attached file: {os.path.basename(main_file)}",
+                    "timestamp": int(time.time())
+                }
+
+                # Read source text
+                try:
+                    with open(main_file, 'r', encoding='utf-8') as f:
+                        source_text = f.read()
+                except Exception:
+                    with open(main_file, 'r', encoding='latin-1') as f:
+                        source_text = f.read()
+
+                target_lang = self._detect_target_lang(query)
+                try:
+                    translated = self._translate_with_claude(source_text, target_lang)
+                except Exception as e:
+                    yield {"type": "final_result", "content": f"Translation error: {e}", "timestamp": int(time.time())}
+                    return
+
+                # Save result next to project outputs
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                stem = os.path.splitext(os.path.basename(main_file))[0]
+                suffix = "_translated_ru" if target_lang == "ru" else "_translated_en"
+                output_filename = f"{stem}{suffix}_{timestamp}.txt"
+                output_path = os.path.join(output_dir, output_filename)
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(translated)
+
+                yield {"type": "final_result", "content": f"Перевод сохранен в файл {output_filename}", "timestamp": int(time.time())}
+                yield {"type": "file_changed", "path": output_path}
+                yield {"type": "thinking_complete", "content": "✓ Translation completed!", "timestamp": int(time.time())}
+                return
+
             if is_data_operation and not data_files:
                 # First, check for explicit file references in the query
-                import re
                 file_pattern = r'(\w+\.(xlsx|xls|csv|json))'
                 file_matches = re.findall(file_pattern, query.lower())
                 
@@ -650,9 +1017,8 @@ class DirectAIAgent:
                     else:
                         dir_path = "test-directory"
                 else:
-                    # Try to extract with regex
+                    # Try to extract with regex (re is imported at top)
                     dir_pattern = r'(?:list|directory|dir|папк[аиу])\s+([^\s]+)'
-                    import re
                     dir_match = re.search(dir_pattern, query.lower())
                     
                     if dir_match:
@@ -685,7 +1051,6 @@ class DirectAIAgent:
             elif operation_type == "read_file":
                 # Try to extract file path
                 file_pattern = r'(?:read|открой)\s+([^\s]+\.\w+)'
-                import re
                 file_match = re.search(file_pattern, query.lower())
                 
                 if file_match:
@@ -1069,6 +1434,13 @@ print(f"Transformed data saved to: {{output_path}}")
                     "timestamp": int(time.time())
                 }
             
+            # Final safety net: check if result.txt was written and salvage it
+            output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "test-directory")
+            salvaged_path = self._salvage_result_file(output_dir)
+            if salvaged_path:
+                yield {"type": "file_changed", "path": salvaged_path}
+                yield {"type": "final_result", "content": f"Translation saved to {os.path.basename(salvaged_path)}", "timestamp": int(time.time())}
+
             # Completion event
             yield {
                 "type": "thinking_complete",
