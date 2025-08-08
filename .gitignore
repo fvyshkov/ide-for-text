@@ -164,3 +164,8 @@ Thumbs.db
 
 # Test files
 backend/test_simple.py
+
+# Ignore everything inside test-directory except the two seed files
+test-directory/**
+!test-directory/planets.xlsx
+!test-directory/Sing a Song of Sixpence.txt
