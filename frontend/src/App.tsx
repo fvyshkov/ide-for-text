@@ -197,19 +197,25 @@ function App() {
           'Content-Type': 'application/json',
         },
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.path) {
-          await loadDirectory(data.path);
+
+      let data: any = null;
+      try { data = await response.json(); } catch { data = null; }
+      if (!(response.ok && data && data.success && data.path)) {
+        // Fallback to test mode for development
+        const fallback = await fetch(`${API_BASE_URL}/api/pick-directory?test_mode=true`, { method: 'POST' });
+        let fjson: any = null;
+        try { fjson = await fallback.json(); } catch { fjson = null; }
+        if (fallback.ok && fjson && fjson.success && fjson.path) {
+          await loadDirectory(fjson.path);
+          return;
         }
-        // If user cancelled, data.success will be false - do nothing
-      } else {
-        alert('Directory picker not available');
+        alert('Error opening directory picker');
+        return;
       }
+      await loadDirectory(data.path);
     } catch (error) {
       console.error('Directory picker error:', error);
-      alert('Error opening directory picker');
+      alert('Directory picker error');
     }
   }, [loadDirectory]);
 
@@ -310,6 +316,35 @@ function App() {
             title="Open folder"
           >
             <FaFolder />
+          </button>
+          <button 
+            className="toolbar-btn"
+            onClick={async () => {
+              try {
+                const pick = await fetch(`${API_BASE_URL}/api/pick-directory`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                let data: any = null;
+                try { data = await pick.json(); } catch { data = null; }
+                if (!pick.ok || !data || !data.success || !data.path) {
+                  throw new Error(data?.message || `Folder picking failed (HTTP ${pick.status})`);
+                }
+                const resp = await fetch(`${API_BASE_URL}/api/bootstrap-sample`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ base_path: data.path, sample_name: 'sample-project', force: true })
+                });
+                let result: any = null;
+                try { result = await resp.json(); } catch { result = null; }
+                if (!resp.ok || !result || !result.success) throw new Error(result?.detail || `HTTP ${resp.status}`);
+                if (result.root_path) await loadDirectory(result.root_path);
+              } catch (e) {
+                alert(`Failed to create sample project: ${e instanceof Error ? e.message : 'unknown error'}`);
+              }
+            }}
+            title="Create sample project"
+            aria-label="Create sample project"
+          >
+            {/* Wizard-like icon via emoji placeholder is not used; keep button minimal per request */}
+            ★
           </button>
           <button 
             className="toolbar-btn"

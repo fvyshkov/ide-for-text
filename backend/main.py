@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, ConfigDict
 import aiofiles
+import shutil
 import pandas as pd
 import openpyxl
 
@@ -336,6 +337,57 @@ class FileWatcher(FileSystemEventHandler):
         # Check if within 2 second window
         return current_time - save_time < 2.0
 
+
+class BootstrapSampleRequest(BaseModel):
+    base_path: str
+    sample_name: Optional[str] = "sample-project"
+    force: bool = True
+
+
+@app.post("/api/bootstrap-sample")
+async def bootstrap_sample(req: BootstrapSampleRequest):
+    """Create a local sample project under base_path/sample_name by copying the repo's test-directory.
+    Returns the new root path and its file tree.
+    """
+    try:
+        base_path = os.path.abspath(req.base_path)
+        if not os.path.exists(base_path) or not os.path.isdir(base_path):
+            raise HTTPException(status_code=400, detail=f"Base path is not a directory: {base_path}")
+
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        source_sample = os.path.join(project_root, "test-directory")
+        if not os.path.exists(source_sample) or not os.path.isdir(source_sample):
+            raise HTTPException(status_code=500, detail="Source sample directory not found")
+
+        target_dir = os.path.join(base_path, req.sample_name)
+
+        # Remove target if exists and force requested
+        if os.path.exists(target_dir):
+            if req.force:
+                shutil.rmtree(target_dir, ignore_errors=True)
+            else:
+                raise HTTPException(status_code=409, detail=f"Target already exists: {target_dir}")
+
+        # Copy with ignore patterns
+        shutil.copytree(
+            source_sample,
+            target_dir,
+            ignore=shutil.ignore_patterns("~$*", ".DS_Store", "__pycache__", "*.pyc"),
+            dirs_exist_ok=False,
+        )
+
+        # Start watching this new directory
+        if target_dir not in file_watcher.watched_paths:
+            observer.schedule(file_watcher, target_dir, recursive=True)
+            file_watcher.watched_paths.add(target_dir)
+
+        tree = build_file_tree(target_dir)
+        return {"success": True, "root_path": target_dir, "tree": tree}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Bootstrap error: {str(e)}")
+
 # Global event loop for FileWatcher
 import threading
 import multiprocessing
@@ -657,21 +709,19 @@ async def write_file(request: FileWriteRequest):
         raise HTTPException(status_code=500, detail=f"Error writing file: {str(e)}")
 
 @app.post("/api/pick-directory")
-async def pick_directory(test_mode: bool = False):
-    """Open system folder picker dialog"""
+async def pick_directory_api(test_mode: bool = False):
+    """Open system folder picker dialog (native), returns selected absolute path.
+    test_mode=True will return repository test-directory for convenience.
+    """
+    print(f"/api/pick-directory called, test_mode={test_mode}")
     if test_mode:
-        # In test mode, always return test-directory
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         test_dir = os.path.join(project_root, "test-directory")
+        print(f"Returning test directory: {test_dir}")
         return {"path": test_dir, "success": True}
-        
-    # Normal mode below
-async def pick_directory():
-    """Open system folder picker dialog"""
     try:
-        if platform.system() == "Darwin":  # macOS
-            print("Using macOS folder picker")
-            # Use AppleScript for native macOS folder picker
+        # On macOS prefer AppleScript (proved working earlier); otherwise use Tkinter
+        if platform.system() == "Darwin":  # macOS AppleScript first
             applescript = '''
             tell application "System Events"
                 activate
@@ -679,57 +729,50 @@ async def pick_directory():
             set selectedFolder to choose folder with prompt "Select Folder"
             return POSIX path of selectedFolder
             '''
-            
-            print("Running AppleScript...")
-            result = subprocess.run([
-                'osascript', '-e', applescript
-            ], capture_output=True, text=True, timeout=60)
-            print("AppleScript result:", result.returncode, result.stdout, result.stderr)
-            
+            result = subprocess.run(['osascript', '-e', applescript], capture_output=True, text=True, timeout=60)
+            print(f"AppleScript exit={result.returncode}, out='{result.stdout.strip()}', err='{result.stderr.strip()}'")
             if result.returncode == 0:
                 folder_path = result.stdout.strip()
                 if folder_path:
-                    # Unescape AppleScript path and convert to absolute path
-                    folder_path = folder_path.replace('\\ ', ' ')
-                    folder_path = os.path.abspath(folder_path)
-                    print(f"Selected folder path: {folder_path}")
-                    print(f"Path exists: {os.path.exists(folder_path)}")
-                    print(f"Is directory: {os.path.isdir(folder_path)}")
+                    folder_path = os.path.abspath(folder_path.replace('\\ ', ' '))
+                    print(f"Selected folder: {folder_path}")
                     return {"path": folder_path, "success": True}
-                else:
+                return {"path": None, "success": False, "message": "User cancelled"}
+            if result.returncode == 1:
+                print("User cancelled folder picker")
+                return {"path": None, "success": False, "message": "User cancelled"}
+            # If AppleScript fails, try Tkinter as fallback
+            if HAS_TKINTER:
+                try:
+                    root = tk.Tk(); root.withdraw(); root.attributes('-topmost', True)
+                    folder_path = filedialog.askdirectory(title="Select Folder", initialdir=os.getcwd())
+                    root.destroy()
+                    if folder_path:
+                        print(f"Selected folder (tk fallback): {folder_path}")
+                        return {"path": os.path.abspath(folder_path), "success": True}
+                    print("User cancelled folder picker (tk)")
                     return {"path": None, "success": False, "message": "User cancelled"}
-            elif result.returncode == 1:
-                # User cancelled
-                return {"path": None, "success": False, "message": "User cancelled"}
-            else:
-                raise Exception(f"AppleScript error: {result.stderr}")
-                
-        elif HAS_TKINTER:
-            # Use tkinter for other platforms
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            root.attributes('-topmost', True)  # Make dialog appear on top
-            
-            # Open folder picker dialog
-            folder_path = filedialog.askdirectory(
-                title="Select Folder",
-                initialdir=os.getcwd()
-            )
-            
-            # Clean up
+                except Exception as te:
+                    print(f"Tkinter fallback error: {te}")
+            raise Exception(result.stderr)
+
+        # Non-macOS platforms: use Tkinter if available
+        if HAS_TKINTER:
+            root = tk.Tk(); root.withdraw(); root.attributes('-topmost', True)
+            folder_path = filedialog.askdirectory(title="Select Folder", initialdir=os.getcwd())
             root.destroy()
-            
             if folder_path:
-                return {"path": folder_path, "success": True}
-            else:
-                # User cancelled
-                return {"path": None, "success": False, "message": "User cancelled"}
-        else:
-            raise HTTPException(status_code=501, detail="System folder picker not available")
-            
+                print(f"Selected folder (tk): {folder_path}")
+                return {"path": os.path.abspath(folder_path), "success": True}
+            return {"path": None, "success": False, "message": "User cancelled"}
+
+        # No picker available
+        raise HTTPException(status_code=501, detail="System folder picker not available")
     except subprocess.TimeoutExpired:
+        print("Folder picker timeout")
         return {"path": None, "success": False, "message": "Dialog timeout"}
     except Exception as e:
+        print(f"Folder picker error: {e}")
         raise HTTPException(status_code=500, detail=f"Error opening folder picker: {str(e)}")
 
 @app.post("/api/open-file")
