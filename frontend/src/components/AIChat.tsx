@@ -65,7 +65,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
     setAttachedFiles(prev => prev.filter(p => p !== path));
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const text = e.dataTransfer.getData('text/plain');
     if (text) {
@@ -73,7 +73,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLTextAreaElement>) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
@@ -249,7 +249,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      setAttachedFiles([]);
+      // Keep chips after sending per UX request
     }
   };
 
@@ -331,7 +331,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
   };
 
   return (
-    <div className="ai-chat">
+      <div className="ai-chat" onDrop={handleDrop} onDragOver={handleDragOver}>
       <div className="ai-chat-header">
         <div className="chat-title">
           <FaRobot className="chat-icon" />
@@ -406,6 +406,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
           {/* Attachments (chips) */}
           {attachedFiles.length > 0 && (
             <div className="attached-files">
+              <button className="file-chips-clear" onClick={() => setAttachedFiles([])} title="Clear all">×</button>
               {attachedFiles.map((p) => (
                 <span key={p} className="file-chip" title={p}>
                   <span className="file-chip-name">{p.split('/').pop()}</span>

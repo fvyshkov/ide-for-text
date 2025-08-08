@@ -13,7 +13,6 @@ import { FaSun, FaMoon, FaFolder, FaSync } from 'react-icons/fa';
 const API_BASE_URL = 'http://localhost:8001';
 
 function App() {
-  console.log('🚀 App component rendering...');
   const { theme, toggleTheme } = useTheme();
   const [tabId] = useState(() => `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   const [fileTree, setFileTree] = useState<FileTreeItem[]>([]);
@@ -36,7 +35,6 @@ function App() {
 
   // Define functions first to avoid hoisting issues
   const loadFileContent = useCallback(async (filePath: string) => {
-    console.log('📖 Loading file content:', filePath);
     setIsLoading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(filePath)}`);
@@ -56,11 +54,9 @@ function App() {
           is_binary: true,
           file_type: "image"
         });
-        console.log('✅ Image file loaded:', filePath);
       } else {
         // For text, Excel and other files, use JSON response
         const content: FileContent = await response.json();
-        console.log('✅ File content loaded, type:', content.file_type || 'text', 'length:', content.content?.length || 0);
         setFileContent(content);
       }
     } catch (error) {
@@ -72,11 +68,9 @@ function App() {
   }, []);
 
   const loadDirectory = useCallback(async (directoryPath: string) => {
-    console.log('Loading directory:', directoryPath);
     setIsLoading(true);
     
     try {
-      console.log('Sending request to open directory:', directoryPath);
       const response = await fetch(`${API_BASE_URL}/api/open-directory`, {
         method: 'POST',
         headers: {
@@ -84,7 +78,6 @@ function App() {
         },
         body: JSON.stringify({ path: directoryPath }),
       });
-      console.log('Response status:', response.status);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -106,22 +99,18 @@ function App() {
 
   // Handle WebSocket messages
   const handleWebSocketMessage = useCallback(async (message: any) => {
-    console.log('📨 Received WebSocket message:', message);
-    console.log('🔍 Current selectedFile:', selectedFile);
-    console.log('🔍 Message sender:', message.sender);
     
     if (message.type === 'file_changed') {
-      console.log('📁 File change detected:', message);
+      
       
       if (rootPath && message.path && message.path.startsWith(rootPath)) {
         // Refresh file tree if change is in our current directory
-        console.log('🔄 Refreshing file tree due to external change');
+        
         loadDirectory(rootPath);
       }
       
       // If the changed file is currently open, auto-reload it
       if (selectedFile && message.path === selectedFile) {
-        console.log('🔄 File changed, auto-reloading:', message.source === 'external' ? 'external change' : 'internal change');
         
         // Always use smart update to preserve cursor position
         if (updateEditorContentRef.current) {
@@ -129,7 +118,6 @@ function App() {
             const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(selectedFile)}`);
             if (response.ok) {
               const content: FileContent = await response.json();
-              console.log('✅ Smart sync: preserving cursor position');
               updateEditorContentRef.current(content.content);
               setFileContent(content); // Update state for other components
             } else {
@@ -145,11 +133,9 @@ function App() {
         }
       }
     } else if (message.type === 'sync_tabs') {
-      console.log('🔄 Tab sync requested:', message.path);
       
       // If synced file is currently open, auto-reload with smart update
       if (selectedFile && message.path === selectedFile) {
-        console.log('🔄 Syncing file content from another tab');
         
         // Try to use smart update first (preserves cursor position)
         if (updateEditorContentRef.current) {
@@ -157,7 +143,6 @@ function App() {
             const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(selectedFile)}`);
             if (response.ok) {
               const content: FileContent = await response.json();
-              console.log('✅ Smart sync: preserving cursor position');
               updateEditorContentRef.current(content.content);
               setFileContent(content); // Update state for other components
             } else {
@@ -173,11 +158,11 @@ function App() {
         }
       }
     } else if (message.type === 'file_deleted') {
-      console.log('🗑️ File deleted externally:', message.path);
+      
       
       if (rootPath && message.path && message.path.startsWith(rootPath)) {
         // Refresh file tree
-        console.log('🔄 Refreshing file tree due to file deletion');
+        
         loadDirectory(rootPath);
       }
       
@@ -190,7 +175,7 @@ function App() {
       }
     } else if (message.type === 'file_updated') {
       // This type is no longer used - we rely on file_changed from FileWatcher instead
-      console.log('📝 Ignoring file_updated message - using FileWatcher instead');
+      
     }
   }, [selectedFile, rootPath, loadDirectory, loadFileContent, tabId]);
 
@@ -241,7 +226,6 @@ function App() {
     const initializeDirectory = async () => {
       // Start with test directory
       const directoryToLoad = 'test-directory';
-      console.log('Initializing with directory:', directoryToLoad);
       
       try {
         await loadDirectory(directoryToLoad);

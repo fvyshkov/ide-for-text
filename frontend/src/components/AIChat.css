@@ -181,6 +181,7 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
+  position: relative;
 }
 
 .file-chip {
@@ -213,6 +214,24 @@
 }
 
 .file-chip-remove:hover {
+  color: var(--chat-title-color);
+}
+
+.file-chips-clear {
+  position: absolute;
+  right: 0;
+  top: -4px;
+  background: none;
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  color: var(--chat-meta-color);
+}
+
+.file-chips-clear:hover {
+  background: var(--chat-button-hover);
   color: var(--chat-title-color);
 }
 

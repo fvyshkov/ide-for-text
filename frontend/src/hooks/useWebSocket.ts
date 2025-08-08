@@ -28,47 +28,39 @@ const createConnection = async (url: string): Promise<WebSocket> => {
       return;
     }
 
-    console.log('🔌 Creating new WebSocket connection...');
+    // Reduced console noise: removed verbose logs
     const ws = new WebSocket(url);
 
     ws.onopen = () => {
-      console.log('✅ WebSocket connected successfully');
+      // Connected
       globalWebSocket = ws;
       resolve(ws);
     };
 
     ws.onmessage = (event) => {
       try {
-        console.log('🎯 Raw WebSocket message received:', event.data);
         const message = JSON.parse(event.data);
-        console.log('🎯 Parsed WebSocket message:', message);
-        console.log('🎯 Number of listeners:', globalListeners.size);
         // Broadcast to all listeners
-        globalListeners.forEach((listener, index) => {
-          console.log(`🎯 Calling listener ${index}`);
-          listener(message);
-        });
+        globalListeners.forEach((listener) => listener(message));
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
       }
     };
 
     ws.onclose = (event) => {
-      console.log('❌ WebSocket disconnected, code:', event.code, 'reason:', event.reason);
+      // Disconnected
       globalWebSocket = null;
       connectionPromise = null;
       
       // If server rejected with too many connections, don't retry immediately
       if (event.code === 1008) {
-        console.log('🚫 Server rejected connection - too many connections');
+        // Too many connections
         return;
       }
 
       // Auto-reconnect after a delay if there are active listeners
       if (globalListeners.size > 0) {
-        console.log('🔄 Will auto-reconnect WebSocket in 2 seconds...');
         setTimeout(() => {
-          console.log('🔄 Auto-reconnecting WebSocket...');
           connectionPromise = createConnection(url);
         }, 2000);
       }
@@ -88,7 +80,7 @@ export const useWebSocket = ({
   maxReconnectAttempts = 5,
   enabled = true
 }: UseWebSocketOptions) => {
-  console.log('🔌 useWebSocket called with:', { url, enabled, onMessage: !!onMessage });
+  // Reduced console noise
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const onMessageRef = useRef(onMessage);
@@ -104,22 +96,18 @@ export const useWebSocket = ({
   }, []);
 
   useEffect(() => {
-    console.log('🔌 useWebSocket useEffect, enabled:', enabled);
     if (!enabled) {
-      console.log('🔌 useWebSocket disabled, returning');
       return;
     }
 
     // Add this component's listener to global set
-    console.log('🔌 Adding listener to global set, current size:', globalListeners.size);
     globalListeners.add(listener);
     
     // Create connection if it doesn't exist
     if (!connectionPromise) {
-      console.log('🔌 Creating new connection promise');
       connectionPromise = createConnection(url);
     } else {
-      console.log('🔌 Connection promise already exists');
+      // Promise already exists
     }
 
     // Wait for connection and update state
@@ -131,7 +119,7 @@ export const useWebSocket = ({
         }
       })
       .catch((error) => {
-        console.error('Failed to connect WebSocket:', error);
+        // Connection failed
         setIsConnected(false);
       });
 
@@ -150,7 +138,7 @@ export const useWebSocket = ({
       
       // Close connection if no listeners left
       if (globalListeners.size === 0 && globalWebSocket) {
-        console.log('🔌 Closing WebSocket - no more listeners');
+        // No more listeners
         globalWebSocket.close();
         globalWebSocket = null;
         connectionPromise = null;
@@ -165,13 +153,11 @@ export const useWebSocket = ({
         timestamp: Date.now()
       };
       globalWebSocket.send(JSON.stringify(messageWithTimestamp));
-      console.log('📤 Sent WebSocket message:', messageWithTimestamp);
     } else {
-      console.warn('⚠️ WebSocket not connected (state:', globalWebSocket?.readyState, '), message not sent:', message);
+      // Not connected; attempt reconnect
       
       // Try to reconnect if not connected
       if (!connectionPromise) {
-        console.log('🔄 Attempting to reconnect WebSocket...');
         connectionPromise = createConnection(url);
       }
     }
