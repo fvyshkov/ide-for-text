@@ -29,14 +29,14 @@ def get_ai_agent(session_id: str = "default"):
     global _agent_sessions
     
     if USE_ADVANCED_AGENT:
-        # Import and use direct agent
-        from ai_agent_direct import DirectAIAgent
+        # Use LangChain-backed transparent agent (ReAct)
+        from ai_agent_improved import TransparentAIAgent
         
         if session_id not in _agent_sessions:
-            print(f"Creating new DIRECT AI agent for session: {session_id}")
-            _agent_sessions[session_id] = DirectAIAgent()
+            print(f"Creating new TRANSPARENT (LangChain) AI agent for session: {session_id}")
+            _agent_sessions[session_id] = TransparentAIAgent()
         else:
-            print(f"Reusing existing DIRECT AI agent for session: {session_id}")
+            print(f"Reusing existing TRANSPARENT (LangChain) AI agent for session: {session_id}")
             
         return _agent_sessions[session_id]
     else:

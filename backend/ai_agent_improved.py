@@ -363,7 +363,7 @@ Thought: {agent_scratchpad}""")
         """Clear conversation history"""
         print("Conversation history cleared")
     
-    async def analyze(self, query: str, project_path: Optional[str] = None, reset_context: bool = False) -> AsyncGenerator[Dict[str, Any], None]:
+    async def analyze(self, query: str, project_path: Optional[str] = None, reset_context: bool = False, attached_file_paths: Optional[List[str]] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Analyze user query with intelligent data visualization
         
@@ -371,6 +371,7 @@ Thought: {agent_scratchpad}""")
             query: User's request
             project_path: Optional project context
             reset_context: Whether to clear conversation history before processing
+            attached_file_paths: Optional list of file paths attached from UI (for future use)
             
         Yields:
             Stream of thought events
@@ -387,46 +388,82 @@ Thought: {agent_scratchpad}""")
                 "timestamp": int(time.time())
             }
             
+            # Resolve project directories
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(backend_dir)
+            test_dir = os.path.join(project_root, "test-directory")
+
+            # Normalize attached files (absolute paths)
+            explicit_attached_files: List[str] = []
+            if attached_file_paths:
+                for p in attached_file_paths:
+                    abs_p = p if os.path.isabs(p) else os.path.join(project_root, p)
+                    if os.path.exists(abs_p):
+                        explicit_attached_files.append(abs_p)
+
             # Check if this is a data visualization request
             visualization_keywords = ['график', 'диаграмма', 'chart', 'pie', 'bar', 'plot', 'визуализация', 'visualization']
             excel_keywords = ['.xlsx', '.xls', 'excel', 'экс']
+            csv_keywords = ['.csv']
             planet_keywords = ['планет', 'planets', 'planet']
             mountain_keywords = ['гор', 'mountain']
             
             is_visualization_request = any(keyword in query.lower() for keyword in visualization_keywords)
             has_excel_reference = any(keyword in query.lower() for keyword in excel_keywords)
+            has_csv_reference = any(keyword in query.lower() for keyword in csv_keywords)
             has_planet_reference = any(keyword in query.lower() for keyword in planet_keywords)
             has_mountain_reference = any(keyword in query.lower() for keyword in mountain_keywords)
             
             # Direct visualization path
             if is_visualization_request:
                 # Determine Excel file to use
-                excel_filename = None
+                data_filename = None
+                data_path = None
                 
                 if has_planet_reference:
-                    excel_filename = "planets.xlsx"
+                    data_filename = "planets.xlsx"
                 elif has_mountain_reference:
-                    excel_filename = "mountains.xlsx"
+                    data_filename = "mountains.xlsx"
                 else:
-                    # Try to extract Excel filename from query
+                    # Try to extract Excel/CSV filename from query
                     import re
-                    excel_pattern = r'(\w+\.xlsx)'
-                    excel_match = re.search(excel_pattern, query.lower())
-                    if excel_match:
-                        excel_filename = excel_match.group(1)
+                    file_pattern = r'(\w+\.(?:xlsx|xls|csv))'
+                    file_match = re.search(file_pattern, query.lower())
+                    if file_match:
+                        data_filename = file_match.group(1)
                 
-                # If we have a filename, proceed with visualization
-                if excel_filename:
-                    excel_path = f"/Users/fvyshkov/PycharmProjects/ide-for-text/test-directory/excel/{excel_filename}"
+                # Prefer attached files if provided and suitable
+                if not data_filename and explicit_attached_files:
+                    for ap in explicit_attached_files:
+                        if ap.lower().endswith(('.xlsx', '.xls', '.csv')):
+                            data_path = ap
+                            break
+
+                # If we have a filename, resolve its path among common locations
+                if data_filename and not data_path:
+                    candidates = [
+                        data_filename if os.path.isabs(data_filename) else os.path.join(test_dir, data_filename),
+                        os.path.join(test_dir, 'excel', data_filename),
+                        os.path.join(test_dir, 'data-samples', data_filename),
+                        os.path.join(project_root, data_filename),
+                        os.path.join(project_path or test_dir, data_filename) if project_path else None,
+                    ]
+                    candidates = [c for c in candidates if c]
+                    for c in candidates:
+                        if os.path.exists(c):
+                            data_path = c
+                            break
                     
-                    # Step 1: Analyze the Excel file
+                # If we have a data file path, proceed with visualization
+                if data_path:
+                    # Step 1: Analyze the data file
                     yield {
                         "type": "tool_use",
-                        "content": f"Using data_tool to analyze {excel_filename}",
+                        "content": f"Using data_tool to analyze {os.path.basename(data_path)}",
                         "timestamp": int(time.time())
                     }
-                    
-                    data_result = self.tools[0]._run(f"analyze {excel_path}")
+
+                    data_result = self.tools[0]._run(f"analyze {data_path}")
                     
                     yield {
                         "type": "tool_result",
@@ -457,9 +494,12 @@ import matplotlib.pyplot as plt
 import os
 
 # Read the Excel file
-excel_path = "{excel_path}"
-df = pd.read_excel(excel_path)
-print(f"Successfully read {{excel_path}}")
+data_path = "{data_path}"
+if data_path.endswith('.csv'):
+    df = pd.read_csv(data_path)
+else:
+    df = pd.read_excel(data_path)
+print(f"Successfully read {{data_path}}")
 print(f"Columns: {{df.columns.tolist()}}")
 print(f"Data shape: {{df.shape}}")
 
@@ -498,8 +538,9 @@ if len(numeric_columns) > 0 and len(categorical_columns) > 0:
         plt.tight_layout()
     
     # Save the chart
-    output_filename = f"{{excel_filename.replace('.xlsx', '')}}_chart.png"
-    output_path = f"/Users/fvyshkov/PycharmProjects/ide-for-text/test-directory/{{output_filename}}"
+    base_stem = os.path.splitext(os.path.basename(data_path))[0]
+    output_filename = f"{ '{' }base_stem{'}' }_chart.png"
+    output_path = os.path.join("{test_dir}", output_filename)
     plt.savefig(output_path)
     plt.close()
     print(f"Chart saved to: {{output_path}}")
@@ -517,7 +558,7 @@ else:
                     }
                     
                     # Final result
-                    output_filename = f"{excel_filename.replace('.xlsx', '')}_chart.png"
+                    output_filename = f"{os.path.splitext(os.path.basename(data_path))[0]}_chart.png"
                     yield {
                         "type": "final_result",
                         "content": f"График успешно создан и сохранен в файл {output_filename} в папке test-directory",
@@ -527,7 +568,7 @@ else:
                     # Try direct tool usage with hardcoded examples
                     yield {
                         "type": "final_result",
-                        "content": "Для создания графика укажите Excel файл, например: 'график планет по planets.xlsx' или 'pie график гор из mountains.xlsx'",
+                        "content": "Для создания графика укажите файл данных (xlsx/csv), например: 'график планет по planets.xlsx' или 'pie график гор из mountains.csv'",
                         "timestamp": int(time.time())
                     }
             else:
