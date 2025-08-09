@@ -157,7 +157,7 @@ class UniversalDataTool:
             operation = parts[0].strip()
             arguments = parts[1].strip()
             print(f"DEBUG: operation={operation}, arguments={arguments}")
-            # Безопасная обработка аргументов
+            # Safe handling of empty/None arguments
             arguments = arguments or '.'
             # Get project root
             backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -593,9 +593,9 @@ class DirectAIAgent:
         candidates: List[str] = []
         for line in log.splitlines():
             lower = line.lower()
-            if ("saved to" in lower) or ("сохранен" in lower) or ("сохранён" in lower):
+            if ("saved to" in lower):
                 # Extract the path after the marker (handles extra prefix like "CodeExecutor:")
-                m = re.search(r"(?:saved to|сохранен|сохранён)\s*:?\s*(.+)$", lower, re.IGNORECASE)
+                m = re.search(r"(?:saved to)\s*:?\s*(.+)$", lower, re.IGNORECASE)
                 raw_path = None
                 if m:
                     # Use original line slice to preserve case
@@ -720,13 +720,12 @@ class DirectAIAgent:
     def _detect_target_lang(self, query_text: str) -> str:
         """Detect target language code from user query (simple heuristics)."""
         q = query_text.lower()
-        if "на рус" in q or "to russian" in q or "into russian" in q or "russian" in q:
+        if "to russian" in q or "into russian" in q or "russian" in q:
             return "ru"
-        if "на англ" in q or "to english" in q or "into english" in q or "english" in q:
+        if "to english" in q or "into english" in q or "english" in q:
             return "en"
-        # Default: if query is Russian, translate to English, else to Russian
-        cyrillic = any('а' <= ch <= 'я' or 'А' <= ch <= 'Я' for ch in q)
-        return "en" if cyrillic else "ru"
+        # Default
+        return "en"
 
     def _translate_with_claude(self, text: str, target_lang: str) -> str:
         """Translate text using Anthropic Claude. Returns translated text or raises.
@@ -902,20 +901,18 @@ class DirectAIAgent:
                         yield {"type": "tool_result", "content": f"LLM returned no actionable plan; falling back.", "timestamp": int(time.time())}
 
             # Step 1: Analyze the query to determine intent
-            data_operations = ['анализ', 'analyze', 'график', 'chart', 'plot', 'визуализация', 'visualization',
-                              'преобразуй', 'transform', 'сравни', 'compare', 'статистика', 'statistics',
-                              'диаграмма', 'ввп', 'gdp', 'создай']
+            data_operations = ['analyze', 'chart', 'plot', 'visualization', 'transform', 'compare', 'statistics', 'gdp', 'create']
             
-            file_operations = ['read', 'открой', 'list', 'покажи', 'найди', 'find', 'search']
+            file_operations = ['read', 'list', 'find', 'search']
             
             # Determine operation type
             ql = query.lower()
             is_data_operation = any(keyword in ql for keyword in data_operations)
             is_file_operation = any(keyword in ql for keyword in file_operations)
             # Keep legacy intent flags for fallback paths
-            is_translate_intent = any(k in ql for k in ["переведи", "перевод", "translate"]) and False
+            is_translate_intent = any(k in ql for k in ["translate"]) and False
             
-            # Отладочный print
+            # Debug prints
             print(f"DEBUG: is_data_operation = {is_data_operation}")
             print(f"DEBUG: query = {query}")
             print(f"DEBUG: data_operations = {data_operations}")
@@ -1018,13 +1015,9 @@ class DirectAIAgent:
                     
                     # Common data subjects that might be in the query
                     subject_keywords = {
-                        'планет': 'planets',
                         'planet': 'planets',
-                        'гор': 'mountains',
                         'mountain': 'mountains',
-                        'стран': 'countries',
                         'country': 'countries',
-                        'элемент': 'elements',
                         'element': 'elements'
                     }
                     
@@ -1103,39 +1096,38 @@ class DirectAIAgent:
             operation_type = "unknown"
             
             # Check for visualization request
-            viz_keywords = ['график', 'диаграмма', 'chart', 'pie', 'bar', 'plot', 'визуализация', 'visualization', 
-                            'создай', 'ввп', 'gdp']
+            viz_keywords = ['chart', 'pie', 'bar', 'plot', 'visualization', 'create', 'gdp']
             if any(keyword in query.lower() for keyword in viz_keywords):
                 operation_type = "visualization"
             
-            # Отладочный print
+            # Debug prints
             print(f"DEBUG: operation_type = {operation_type}")
             print(f"DEBUG: viz_keywords = {viz_keywords}")
             print(f"DEBUG: query.lower() = {query.lower()}")
             
             # Check for analysis request
-            analysis_keywords = ['анализ', 'analyze', 'statistics', 'статистика', 'сравни', 'compare']
+            analysis_keywords = ['analyze', 'statistics', 'compare']
             if any(keyword in query.lower() for keyword in analysis_keywords):
                 operation_type = "analysis"
             
             # Check for transformation request
-            transform_keywords = ['преобразуй', 'transform', 'convert', 'merge', 'join', 'объедини']
+            transform_keywords = ['transform', 'convert', 'merge', 'join']
             if any(keyword in query.lower() for keyword in transform_keywords):
                 operation_type = "transformation"
             
             # Check for file operations
             if "list" in query.lower() and "directory" in query.lower():
                 operation_type = "list_directory"
-            elif "read" in query.lower() or "открой" in query.lower():
+            elif "read" in query.lower():
                 operation_type = "read_file"
-            elif "find" in query.lower() or "search" in query.lower() or "найди" in query.lower() or "поиск" in query.lower():
+            elif "find" in query.lower() or "search" in query.lower():
                 operation_type = "search_files"
             
             # Step 4: Execute the appropriate operation
             if operation_type == "search_files":
                 # Extract search terms
                 search_terms = query.lower()
-                for term in ["find", "search", "найди", "поиск", "файл", "file"]:
+                for term in ["find", "search", "file"]:
                     search_terms = search_terms.replace(term, "").strip()
                 
                 yield {
@@ -1176,7 +1168,7 @@ class DirectAIAgent:
                         dir_path = "test-directory"
                 else:
                     # Try to extract with regex (re is imported at top)
-                    dir_pattern = r'(?:list|directory|dir|папк[аиу])\s+([^\s]+)'
+                    dir_pattern = r'(?:list|directory|dir)\s+([^\s]+)'
                     dir_match = re.search(dir_pattern, query.lower())
                     
                     if dir_match:
@@ -1202,13 +1194,13 @@ class DirectAIAgent:
                 
                 yield {
                     "type": "final_result",
-                    "content": f"Содержимое директории {dir_path}:\n{result}",
+                    "content": f"Directory contents for {dir_path}:\n{result}",
                     "timestamp": int(time.time())
                 }
                 
             elif operation_type == "read_file":
                 # Try to extract file path
-                file_pattern = r'(?:read|открой)\s+([^\s]+\.\w+)'
+                file_pattern = r'(?:read)\s+([^\s]+\.\w+)'
                 file_match = re.search(file_pattern, query.lower())
                 
                 if file_match:
@@ -1270,19 +1262,19 @@ class DirectAIAgent:
                         
                         yield {
                             "type": "final_result",
-                            "content": f"Содержимое файла {os.path.basename(file_path)}:\n{result}",
+                            "content": f"Contents of {os.path.basename(file_path)}:\n{result}",
                             "timestamp": int(time.time())
                         }
                     else:
                         yield {
                             "type": "final_result",
-                            "content": f"Файл '{file_name}' не найден.",
+                            "content": f"File '{file_name}' not found.",
                             "timestamp": int(time.time())
                         }
                 else:
                     yield {
                         "type": "final_result",
-                        "content": "Пожалуйста, укажите файл для чтения. Например: 'read example.txt'",
+                        "content": "Please specify a file to read. Example: 'read example.txt'",
                         "timestamp": int(time.time())
                     }
                     
@@ -1331,11 +1323,11 @@ class DirectAIAgent:
                 if operation_type == "visualization":
                     if "pie" in query.lower():
                         chart_type = "pie"
-                    elif "line" in query.lower() or "линия" in query.lower():
+                    elif "line" in query.lower():
                         chart_type = "line"
-                    elif "scatter" in query.lower() or "точечн" in query.lower():
+                    elif "scatter" in query.lower():
                         chart_type = "scatter"
-                    elif "area" in query.lower() or "площад" in query.lower():
+                    elif "area" in query.lower():
                         chart_type = "area"
                 
                 # Generate timestamp for unique filenames
@@ -1507,7 +1499,7 @@ transformed_df = df.copy()
 query = "{query.lower()}"
 
 # Check for specific transformations
-if "sort" in query or "сортировка" in query:
+if "sort" in query:
     # Sort by first numeric column if available
     if numeric_columns:
         sort_col = numeric_columns[0]
@@ -1515,7 +1507,7 @@ if "sort" in query or "сортировка" in query:
         print(f"Sorted data by {{sort_col}}")
 
 # Filter operations
-if "filter" in query or "фильтр" in query:
+if "filter" in query:
     # Simple filtering example - keep only top half of values
     if numeric_columns:
         filter_col = numeric_columns[0]
@@ -1524,7 +1516,7 @@ if "filter" in query or "фильтр" in query:
         print(f"Filtered data where {{filter_col}} > {{median}}")
 
 # Aggregation operations
-if "group" in query or "группировка" in query:
+if "group" in query:
     # Group by first categorical column and aggregate numeric columns
     if categorical_columns and numeric_columns:
         group_col = categorical_columns[0]
@@ -1566,20 +1558,20 @@ print(f"Transformed data saved to: {{output_path}}")
                 result_message = ""
                 if success:
                     if operation_type == "visualization":
-                        result_message = f"График успешно создан и сохранен в файл {output_filename} в папке test-directory"
+                        result_message = f"Chart created and saved to {output_filename}"
                     elif operation_type == "analysis":
-                        result_message = f"Анализ данных успешно выполнен и сохранен в файл {output_filename} в папке test-directory"
+                        result_message = f"Analysis completed and saved to {output_filename}"
                     elif operation_type == "transformation":
-                        result_message = f"Данные успешно преобразованы и сохранены в файл {output_filename} в папке test-directory"
+                        result_message = f"Data transformed and saved to {output_filename}"
                 else:
                     # Try to extract error message from code result
-                    error_message = "Неизвестная ошибка"
+                    error_message = "Unknown error"
                     if "Error" in code_result:
                         error_lines = [line for line in code_result.split('\n') if "Error" in line]
                         if error_lines:
                             error_message = error_lines[0]
                     
-                    result_message = f"Произошла ошибка при выполнении операции: {error_message}"
+                    result_message = f"Operation failed: {error_message}"
                 
                 yield {
                     "type": "final_result",
@@ -1591,13 +1583,7 @@ print(f"Transformed data saved to: {{output_path}}")
                 # No data files found or unknown operation
                 yield {
                     "type": "final_result",
-                    "content": """Я могу помочь с анализом данных, визуализацией и преобразованием. Примеры запросов:
-- 'создай график планет по planets.xlsx'
-- 'pie график распределения стран по странам'
-- 'анализ данных в файле mountains.xlsx'
-- 'преобразуй данные в файле elements.xlsx'
-- 'read example.txt'
-- 'list directory test-directory'""",
+                    "content": "I can help with data analysis, visualization and transformation. Examples:\n- 'create chart from planets.xlsx'\n- 'pie chart for countries.csv'\n- 'analyze mountains.xlsx'\n- 'transform elements.xlsx'\n- 'read example.txt'\n- 'list directory <path>'",
                     "timestamp": int(time.time())
                 }
             
@@ -1648,15 +1634,15 @@ async def test_direct_agent():
     
     test_queries = [
         # File operations
-        "найди файлы с планетами",
+        "find files with planets",
         "list directory test-directory/excel",
         "read planets.xlsx",
         
         # Data operations
-        "создай график планет",
-        "pie график гор",
-        "анализ данных по странам",
-        "преобразуй данные из файла elements.xlsx"
+        "create planets chart",
+        "pie chart for mountains",
+        "analyze countries",
+        "transform elements.xlsx"
     ]
     
     for query in test_queries:

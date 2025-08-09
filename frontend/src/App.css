@@ -53,7 +53,7 @@
   gap: 15px;
   flex: 2;
   min-width: 0;
-  justify-content: flex-end; /* Выравнивание содержимого по правому краю */
+  justify-content: flex-end; /* Align content to the right */
 }
 
 .app-header h1 {
@@ -86,7 +86,7 @@
   gap: 8px;
   font-size: 0.9rem;
   min-width: 0;
-  margin-right: auto; /* Отступ справа до кнопки темы */
+  margin-right: auto; /* Space to the right before theme toggle */
 }
 
 .directory-label,
@@ -168,7 +168,7 @@
   transition: all 0.2s ease;
   min-width: 36px;
   height: 36px;
-  margin-right: 16px; /* Отступ справа */
+  margin-right: 16px; /* Right margin */
 }
 
 /* Light theme toggle button */

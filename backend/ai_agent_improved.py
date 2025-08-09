@@ -107,7 +107,7 @@ class UniversalDataTool(BaseTool):
             operation = parts[0].strip()
             arguments = parts[1].strip()
             print(f"DEBUG: operation={operation}, arguments={arguments}")
-            # Безопасная обработка аргументов
+            # Safe handling of empty/None arguments
             arguments = arguments or '.'
             # Get project root
             backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -136,7 +136,11 @@ class UniversalDataTool(BaseTool):
                     return f"File content:\n{content}"
             
             elif operation == "list":
-                dir_path = os.path.join(project_root, arguments) if arguments else project_root
+                # Accept absolute directory paths; otherwise resolve from repo root
+                if arguments and os.path.isabs(arguments):
+                    dir_path = arguments
+                else:
+                    dir_path = os.path.join(project_root, arguments) if arguments else project_root
                 if not os.path.exists(dir_path):
                     return f"Error: Directory '{arguments}' not found"
                 
@@ -224,7 +228,7 @@ class CodeExecutor(BaseTool):
     Example: code_executor print("Hello World")
     
     IMPORTANT: When creating visualizations:
-    - Save charts to test-directory/ or test-directory/charts/ 
+    - Save charts to the current working directory or to an explicit absolute path
     - Always use plt.savefig() and plt.close()
     - Print the saved file path for user feedback
     
@@ -316,7 +320,7 @@ When asked to create charts or visualizations:
 2. Then use code_executor to create Python code that:
    - Reads the data
    - Creates appropriate visualizations
-   - Saves charts to test-directory/ or test-directory/charts/
+   - Saves charts to the current working directory or to an explicit absolute path
    - Always uses plt.savefig() and plt.close()
    - Prints the saved file path
 
@@ -388,49 +392,38 @@ Thought: {agent_scratchpad}""")
                 "timestamp": int(time.time())
             }
             
-            # Resolve project directories
-            backend_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(backend_dir)
-            test_dir = os.path.join(project_root, "test-directory")
+            # Resolve base directory for the project
+            base_dir = os.path.abspath(project_path) if project_path else os.getcwd()
 
             # Normalize attached files (absolute paths)
             explicit_attached_files: List[str] = []
             if attached_file_paths:
                 for p in attached_file_paths:
-                    abs_p = p if os.path.isabs(p) else os.path.join(project_root, p)
+                    abs_p = p if os.path.isabs(p) else os.path.join(base_dir, p)
                     if os.path.exists(abs_p):
                         explicit_attached_files.append(abs_p)
 
             # Check if this is a data visualization request
-            visualization_keywords = ['график', 'диаграмма', 'chart', 'pie', 'bar', 'plot', 'визуализация', 'visualization']
-            excel_keywords = ['.xlsx', '.xls', 'excel', 'экс']
+            visualization_keywords = ['chart', 'plot', 'visualization', 'pie', 'bar', 'line', 'scatter', 'area']
+            excel_keywords = ['.xlsx', '.xls', 'excel']
             csv_keywords = ['.csv']
-            planet_keywords = ['планет', 'planets', 'planet']
-            mountain_keywords = ['гор', 'mountain']
             
             is_visualization_request = any(keyword in query.lower() for keyword in visualization_keywords)
             has_excel_reference = any(keyword in query.lower() for keyword in excel_keywords)
             has_csv_reference = any(keyword in query.lower() for keyword in csv_keywords)
-            has_planet_reference = any(keyword in query.lower() for keyword in planet_keywords)
-            has_mountain_reference = any(keyword in query.lower() for keyword in mountain_keywords)
+            # Simple ReAct agent depends on tool results; domain-specific keywords removed
             
             # Direct visualization path
             if is_visualization_request:
-                # Determine Excel file to use
-                data_filename = None
-                data_path = None
-                
-                if has_planet_reference:
-                    data_filename = "planets.xlsx"
-                elif has_mountain_reference:
-                    data_filename = "mountains.xlsx"
-                else:
-                    # Try to extract Excel/CSV filename from query
-                    import re
-                    file_pattern = r'(\w+\.(?:xlsx|xls|csv))'
-                    file_match = re.search(file_pattern, query.lower())
-                    if file_match:
-                        data_filename = file_match.group(1)
+                # Select data file to use
+                data_path: Optional[str] = None
+                data_filename: Optional[str] = None
+                # Try to extract Excel/CSV filename from query
+                import re
+                file_pattern = r'([\w./-]+\.(?:xlsx|xls|csv))'
+                file_match = re.search(file_pattern, query, flags=re.IGNORECASE)
+                if file_match:
+                    data_filename = file_match.group(1)
                 
                 # Prefer attached files if provided and suitable
                 if not data_filename and explicit_attached_files:
@@ -439,20 +432,24 @@ Thought: {agent_scratchpad}""")
                             data_path = ap
                             break
 
-                # If we have a filename, resolve its path among common locations
+                # If we have a filename, resolve its absolute path inside base_dir
                 if data_filename and not data_path:
-                    candidates = [
-                        data_filename if os.path.isabs(data_filename) else os.path.join(test_dir, data_filename),
-                        os.path.join(test_dir, 'excel', data_filename),
-                        os.path.join(test_dir, 'data-samples', data_filename),
-                        os.path.join(project_root, data_filename),
-                        os.path.join(project_path or test_dir, data_filename) if project_path else None,
-                    ]
-                    candidates = [c for c in candidates if c]
-                    for c in candidates:
-                        if os.path.exists(c):
-                            data_path = c
-                            break
+                    candidate_path = data_filename if os.path.isabs(data_filename) else os.path.join(base_dir, data_filename)
+                    if os.path.exists(candidate_path):
+                        data_path = candidate_path
+                    else:
+                        # Fallback: walk base_dir to find by filename
+                        for root, _, files in os.walk(base_dir):
+                            if os.path.basename(data_filename) in files:
+                                data_path = os.path.join(root, os.path.basename(data_filename))
+                                break
+
+                # RAG v0: if still no data_path, try lightweight filename/header match over base_dir
+                if not data_path:
+                    try:
+                        data_path = self._rag_pick_best_file(query, base_dir)
+                    except Exception:
+                        data_path = None
                     
                 # If we have a data file path, proceed with visualization
                 if data_path:
@@ -474,7 +471,7 @@ Thought: {agent_scratchpad}""")
                     # Step 2: Create intelligent visualization based on query
                     yield {
                         "type": "tool_use",
-                        "content": f"Using code_executor to create visualization for {excel_filename}",
+                        "content": f"Using code_executor to create visualization for {os.path.basename(data_path)}",
                         "timestamp": int(time.time())
                     }
                     
@@ -482,7 +479,7 @@ Thought: {agent_scratchpad}""")
                     chart_type = "bar"
                     if "pie" in query.lower():
                         chart_type = "pie"
-                    elif "line" in query.lower() or "линия" in query.lower():
+                    elif "line" in query.lower():
                         chart_type = "line"
                     elif "scatter" in query.lower():
                         chart_type = "scatter"
@@ -540,7 +537,7 @@ if len(numeric_columns) > 0 and len(categorical_columns) > 0:
     # Save the chart
     base_stem = os.path.splitext(os.path.basename(data_path))[0]
     output_filename = f"{ '{' }base_stem{'}' }_chart.png"
-    output_path = os.path.join("{test_dir}", output_filename)
+    output_path = os.path.join("{base_dir}", output_filename)
     plt.savefig(output_path)
     plt.close()
     print(f"Chart saved to: {{output_path}}")
@@ -561,21 +558,21 @@ else:
                     output_filename = f"{os.path.splitext(os.path.basename(data_path))[0]}_chart.png"
                     yield {
                         "type": "final_result",
-                        "content": f"График успешно создан и сохранен в файл {output_filename} в папке test-directory",
+                        "content": f"Chart created and saved to {output_filename} (under project directory)",
                         "timestamp": int(time.time())
                     }
                 else:
-                    # Try direct tool usage with hardcoded examples
+                    # Ask for a concrete file
                     yield {
                         "type": "final_result",
-                        "content": "Для создания графика укажите файл данных (xlsx/csv), например: 'график планет по planets.xlsx' или 'pie график гор из mountains.csv'",
+                        "content": "Please specify a data file (xlsx/csv) in your prompt or attach a file to create a chart.",
                         "timestamp": int(time.time())
                     }
             else:
                 # For non-visualization queries, use direct tool calls
                 if "list" in query.lower() and "directory" in query.lower():
                     # List directory contents
-                    dir_path = project_path or "test-directory"
+                    dir_path = base_dir
                     yield {
                         "type": "tool_use",
                         "content": f"Using data_tool to list directory: {dir_path}",
@@ -592,18 +589,18 @@ else:
                     
                     yield {
                         "type": "final_result",
-                        "content": f"Содержимое директории {dir_path}:\n{result}",
+                        "content": f"Directory contents for {dir_path}:\n{result}",
                         "timestamp": int(time.time())
                     }
-                elif "read" in query.lower() or "открой" in query.lower():
+                elif "read" in query.lower():
                     # Try to extract file path
                     import re
-                    file_pattern = r'(?:read|открой)\s+([^\s]+\.\w+)'
+                    file_pattern = r'(?:read)\s+([^\s]+\.\w+)'
                     file_match = re.search(file_pattern, query.lower())
                     
                     if file_match:
                         file_path = file_match.group(1)
-                        full_path = os.path.join(project_path or "test-directory", file_path)
+                        full_path = file_path if os.path.isabs(file_path) else os.path.join(base_dir, file_path)
                         
                         yield {
                             "type": "tool_use",
@@ -621,20 +618,20 @@ else:
                         
                         yield {
                             "type": "final_result",
-                            "content": f"Содержимое файла {file_path}:\n{result}",
+                            "content": f"Contents of {file_path}:\n{result}",
                             "timestamp": int(time.time())
                         }
                     else:
                         yield {
                             "type": "final_result",
-                            "content": "Пожалуйста, укажите файл для чтения. Например: 'read example.txt'",
+                            "content": "Please specify a file to read. Example: 'read example.txt'",
                             "timestamp": int(time.time())
                         }
                 else:
                     # Default response for other queries
                     yield {
                         "type": "final_result",
-                        "content": "Я могу помочь с визуализацией данных из Excel файлов, чтением файлов и просмотром директорий. Например:\n- 'pie график планет по planets.xlsx'\n- 'график гор из mountains.xlsx'\n- 'read example.txt'\n- 'list directory'",
+                        "content": "I can help with data visualization from Excel/CSV files, reading files, and listing directories. Examples:\n- 'create pie chart from planets.xlsx'\n- 'read example.txt'\n- 'list directory'",
                         "timestamp": int(time.time())
                     }
             
@@ -651,6 +648,56 @@ else:
                 "type": "error",
                 "content": str(e)
             }
+
+    # ====== Simple RAG v0 over filenames and headers ======
+    def _rag_build_index(self, base_dir: str) -> dict:
+        """Build a lightweight index of files under base_dir with filename tokens and header tokens."""
+        index: dict = {}
+        for root, _, files in os.walk(base_dir):
+            for name in files:
+                if name.startswith('~$'):
+                    continue
+                path = os.path.join(root, name)
+                entry = {
+                    "path": path,
+                    "name_tokens": self._rag_tokenize(os.path.splitext(name)[0]),
+                    "header_tokens": set(),
+                }
+                lower = name.lower()
+                try:
+                    if lower.endswith('.csv'):
+                        import pandas as pd
+                        df = pd.read_csv(path, nrows=5)
+                        entry["header_tokens"] = self._rag_tokenize(' '.join(map(str, list(df.columns))))
+                    elif lower.endswith(('.xlsx', '.xls')):
+                        import pandas as pd
+                        df = pd.read_excel(path, nrows=5)
+                        entry["header_tokens"] = self._rag_tokenize(' '.join(map(str, list(df.columns))))
+                except Exception:
+                    pass
+                index[path] = entry
+        return index
+
+    def _rag_tokenize(self, text: str) -> set:
+        import re as _re
+        return set(t for t in _re.split(r"[^a-zA-Z0-9_]+", text.lower()) if t)
+
+    def _rag_pick_best_file(self, query: str, base_dir: str) -> Optional[str]:
+        # Cache per base_dir
+        if not hasattr(self, "_rag_index") or getattr(self, "_rag_base", None) != base_dir:
+            self._rag_index = self._rag_build_index(base_dir)
+            self._rag_base = base_dir
+        q_tokens = self._rag_tokenize(query)
+        best_path = None
+        best_score = 0
+        for path, entry in self._rag_index.items():
+            name_overlap = len(q_tokens & entry["name_tokens"]) 
+            header_overlap = len(q_tokens & entry["header_tokens"]) * 2  # headers weight more
+            score = name_overlap + header_overlap
+            if score > best_score:
+                best_score = score
+                best_path = path
+        return best_path if best_score > 0 else None
 
     def get_tools(self):
         """

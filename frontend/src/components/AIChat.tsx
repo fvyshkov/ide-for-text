@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FaPaperPlane, FaRobot, FaUser, FaTrash, FaBrain, FaTools, FaCheckCircle, FaCopy, FaCheck } from 'react-icons/fa';
 import './AIChat.css';
-// Импортируем API для работы с файлами
+// Import API to work with files
 import { openFile } from '../utils/fileUtils';
 
 interface Message {
@@ -218,7 +218,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
                     const fileMessage: Message = {
                       id: `file-${Date.now()}`,
                       type: 'file_generated',
-                      content: `Создан файл: ${event.path.split('/').pop()}`,
+                      content: `File created: ${event.path.split('/').pop()}`,
                       timestamp: new Date(),
                       metadata: {
                         generatedFile: {
