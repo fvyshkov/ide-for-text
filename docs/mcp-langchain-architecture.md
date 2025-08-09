@@ -2,8 +2,8 @@
 
 This document describes how to integrate MCP (Model Context Protocol) with our existing project so the agent can use standardized tools while LangChain remains the orchestration layer.
 
-## Goals
-- **Standardize tool invocation via MCP**: vendor‑neutral, hot‑pluggable tools.
+## Goals 
+- **Standardize tool invocation via MCP**: vendor‑neutral,  hot‑pluggable tools.
 - **Keep LangChain as the agent planner/executor**: ReAct/LangGraph, streaming, callbacks.
 - **Preserve current UX**: generated files appear in the workspace and auto‑focus in the file tree.
 - **Improve safety, observability, and portability**.
