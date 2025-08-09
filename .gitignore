@@ -169,3 +169,7 @@ backend/test_simple.py
 test-directory/**
 !test-directory/planets.xlsx
 !test-directory/Sing a Song of Sixpence.txt
+
+# Allow CRA public directory under frontend (needed for index.html, favicon, etc.)
+!frontend/public/
+!frontend/public/**
