@@ -18,7 +18,7 @@ import pandas as pd
 import openpyxl
 
 # AI Agent import - using manager for version switching
-from ai_agent_manager import get_ai_agent, clear_session, get_agent_info
+from backend.ai_agent_manager import get_ai_agent, clear_session, get_agent_info
 # import magic  # Temporarily disabled due to libmagic dependency issues
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -519,7 +519,7 @@ def build_file_tree(directory: str, max_depth: int = 10, current_depth: int = 0)
     
     return items
 
-from tools.data_analysis import intelligent_data_visualization
+from backend.tools.data_analysis import intelligent_data_visualization
 
 @app.post("/api/visualize-data")
 async def visualize_data(file_path: str):

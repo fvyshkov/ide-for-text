@@ -13,7 +13,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
 # Import only file operation tools
-from tools.file_operations import read_file_content, write_file_content, list_files_in_directory, get_file_info
+from backend.tools.file_operations import read_file_content, write_file_content, list_files_in_directory, get_file_info
 
 # Load environment variables
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
