@@ -20,6 +20,18 @@ from langchain_core.messages import SystemMessage
 from pydantic import BaseModel, Field, ConfigDict
 import pandas as pd
 import json
+import numpy as np
+try:
+    from sentence_transformers import SentenceTransformer
+    _HAS_ST = True
+except Exception:
+    _HAS_ST = False
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    _HAS_SK = True
+except Exception:
+    _HAS_SK = False
 
 # Load environment variables
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -651,31 +663,60 @@ else:
 
     # ====== Simple RAG v0 over filenames and headers ======
     def _rag_build_index(self, base_dir: str) -> dict:
-        """Build a lightweight index of files under base_dir with filename tokens and header tokens."""
-        index: dict = {}
+        """Build an index with metadata and vector embeddings for files under base_dir.
+        Uses SentenceTransformers if available, otherwise TF-IDF vectors (per-file documents).
+        """
+        docs = []
+        meta = []
         for root, _, files in os.walk(base_dir):
             for name in files:
                 if name.startswith('~$'):
                     continue
                 path = os.path.join(root, name)
-                entry = {
-                    "path": path,
-                    "name_tokens": self._rag_tokenize(os.path.splitext(name)[0]),
-                    "header_tokens": set(),
-                }
                 lower = name.lower()
+                header_text = ""
                 try:
                     if lower.endswith('.csv'):
-                        import pandas as pd
                         df = pd.read_csv(path, nrows=5)
-                        entry["header_tokens"] = self._rag_tokenize(' '.join(map(str, list(df.columns))))
+                        header_text = ' '.join(map(str, list(df.columns)))
                     elif lower.endswith(('.xlsx', '.xls')):
-                        import pandas as pd
                         df = pd.read_excel(path, nrows=5)
-                        entry["header_tokens"] = self._rag_tokenize(' '.join(map(str, list(df.columns))))
+                        header_text = ' '.join(map(str, list(df.columns)))
                 except Exception:
                     pass
-                index[path] = entry
+                # Compose document: filename + headers
+                doc_text = f"{os.path.splitext(name)[0]} {header_text}".strip()
+                if not doc_text:
+                    doc_text = name
+                docs.append(doc_text)
+                meta.append({"path": path, "name": name})
+
+        vectors = None
+        model_name = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        if _HAS_ST:
+            try:
+                if not hasattr(self, "_st_model") or getattr(self, "_st_model_name", None) != model_name:
+                    self._st_model = SentenceTransformer(model_name)
+                    self._st_model_name = model_name
+                vectors = self._st_model.encode(docs, convert_to_numpy=True, normalize_embeddings=True)
+            except Exception:
+                vectors = None
+        if vectors is None and _HAS_SK:
+            # TF-IDF fallback
+            self._tfidf = TfidfVectorizer(max_features=4096, ngram_range=(1, 2))
+            tfidf_matrix = self._tfidf.fit_transform(docs)
+            vectors = tfidf_matrix.toarray().astype(np.float32)
+            # L2 normalize
+            norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-8
+            vectors = vectors / norms
+
+        index = {
+            "docs": docs,
+            "meta": meta,
+            "vectors": vectors,
+            "base_dir": base_dir,
+            "backend": "st" if _HAS_ST and getattr(self, "_st_model", None) is not None else ("tfidf" if _HAS_SK else "none")
+        }
         return index
 
     def _rag_tokenize(self, text: str) -> set:
@@ -684,20 +725,30 @@ else:
 
     def _rag_pick_best_file(self, query: str, base_dir: str) -> Optional[str]:
         # Cache per base_dir
-        if not hasattr(self, "_rag_index") or getattr(self, "_rag_base", None) != base_dir:
+        if not hasattr(self, "_rag_index") or self._rag_index.get("base_dir") != base_dir:
             self._rag_index = self._rag_build_index(base_dir)
-            self._rag_base = base_dir
-        q_tokens = self._rag_tokenize(query)
-        best_path = None
-        best_score = 0
-        for path, entry in self._rag_index.items():
-            name_overlap = len(q_tokens & entry["name_tokens"]) 
-            header_overlap = len(q_tokens & entry["header_tokens"]) * 2  # headers weight more
-            score = name_overlap + header_overlap
-            if score > best_score:
-                best_score = score
-                best_path = path
-        return best_path if best_score > 0 else None
+        if not self._rag_index or self._rag_index.get("vectors") is None:
+            return None
+        docs = self._rag_index["docs"]
+        meta = self._rag_index["meta"]
+        vectors = self._rag_index["vectors"]
+
+        # Encode query
+        if _HAS_ST and getattr(self, "_st_model", None) is not None:
+            q_vec = self._st_model.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+        elif _HAS_SK and hasattr(self, "_tfidf"):
+            q_vec = self._tfidf.transform([query]).toarray().astype(np.float32)[0]
+            q_vec = q_vec / (np.linalg.norm(q_vec) + 1e-8)
+        else:
+            return None
+
+        # Cosine similarity
+        sims = vectors @ q_vec
+        best_idx = int(np.argmax(sims))
+        best_sim = float(sims[best_idx])
+        if best_sim <= 0.1:
+            return None
+        return meta[best_idx]["path"]
 
     def get_tools(self):
         """

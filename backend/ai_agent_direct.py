@@ -53,8 +53,8 @@ class FileSearchTool:
                     search_query = search_query.replace(keyword, '').strip()
                     break
             
-            # Define search root - default to test-directory
-            search_root = os.path.join(project_root, "test-directory")
+            # Define search root - use provided project_path or current working directory
+            search_root = os.getcwd()
             
             # Map file type to extensions
             extension_map = {
@@ -167,13 +167,11 @@ class UniversalDataTool:
             if operation == "read":
                 # Check if path is absolute or relative
                 if not os.path.isabs(arguments):
-                    # Try to find the file in test-directory
-                    test_dir = os.path.join(project_root, "test-directory")
+                    # Try relative to project root and CWD
                     possible_paths = [
-                        arguments,  # As is
-                        os.path.join(test_dir, arguments),  # In test-directory
-                        os.path.join(test_dir, "excel", arguments),  # In test-directory/excel
-                        os.path.join(test_dir, "data-samples", arguments)  # In test-directory/data-samples
+                        arguments,
+                        os.path.join(project_root, arguments),
+                        os.path.join(os.getcwd(), arguments)
                     ]
                     
                     # Try each path
@@ -235,13 +233,11 @@ class UniversalDataTool:
             elif operation == "analyze":
                 # Handle relative paths similar to read operation
                 if not os.path.isabs(arguments):
-                    # Try to find the file in test-directory
-                    test_dir = os.path.join(project_root, "test-directory")
+                    # Try relative to project root and CWD
                     possible_paths = [
-                        arguments,  # As is
-                        os.path.join(test_dir, arguments),  # In test-directory
-                        os.path.join(test_dir, "excel", arguments),  # In test-directory/excel
-                        os.path.join(test_dir, "data-samples", arguments)  # In test-directory/data-samples
+                        arguments,
+                        os.path.join(project_root, arguments),
+                        os.path.join(os.getcwd(), arguments)
                     ]
                     
                     # Try each path
@@ -445,10 +441,10 @@ class DirectAIAgent:
         ]
         self.websocket = websocket
         
-        # Get project root directory
+        # Resolve base directory dynamically from project_path or current working directory at call time
         backend_dir = os.path.dirname(os.path.abspath(__file__))
         self.project_root = os.path.dirname(backend_dir)
-        self.data_dir = os.path.join(self.project_root, "test-directory")
+        self.data_dir = None  # determined per-call from project_path or CWD
     
     def clear_context(self):
         """Clear conversation history (placeholder for compatibility)"""
@@ -788,9 +784,10 @@ class DirectAIAgent:
                 "timestamp": int(time.time())
             }
             
-            # Update data directory if project_path is provided
-            data_dir = os.path.join(self.project_root, project_path) if project_path else self.data_dir
-            output_dir = data_dir  # Default output directory
+            # Resolve base/output directory
+            base_dir = os.path.abspath(project_path) if project_path else os.getcwd()
+            data_dir = base_dir
+            output_dir = base_dir
             
             # Normalize attached file paths (if provided)
             explicit_attached_files: List[str] = []
@@ -1156,27 +1153,15 @@ class DirectAIAgent:
                 dir_path = None
                 
                 # Check if query contains a specific path
-                if "test-directory" in query:
-                    parts = query.split("test-directory")
-                    if len(parts) > 1 and parts[1].strip():
-                        # Extract path after "test-directory"
-                        sub_path = parts[1].strip()
-                        # Remove any leading or trailing slashes
-                        sub_path = sub_path.strip("/")
-                        dir_path = os.path.join("test-directory", sub_path)
-                    else:
-                        dir_path = "test-directory"
-                else:
-                    # Try to extract with regex (re is imported at top)
-                    dir_pattern = r'(?:list|directory|dir)\s+([^\s]+)'
-                    dir_match = re.search(dir_pattern, query.lower())
-                    
-                    if dir_match:
-                        dir_path = dir_match.group(1)
+                # Try to extract with regex (re is imported at top)
+                dir_pattern = r'(?:list|directory|dir)\s+([^\s]+)'
+                dir_match = re.search(dir_pattern, query.lower())
+                if dir_match:
+                    dir_path = dir_match.group(1)
                 
                 # Default to project_path or data_dir if no path specified
                 if not dir_path:
-                    dir_path = project_path or "test-directory"
+                    dir_path = base_dir
                 
                 yield {
                     "type": "tool_use",
@@ -1588,7 +1573,7 @@ print(f"Transformed data saved to: {{output_path}}")
                 }
             
             # Final safety net: check if result.txt was written and salvage it
-            output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "test-directory")
+            output_dir = os.getcwd()
             salvaged_path = self._salvage_result_file(output_dir)
             if salvaged_path:
                 yield {"type": "file_changed", "path": salvaged_path}
@@ -1635,7 +1620,7 @@ async def test_direct_agent():
     test_queries = [
         # File operations
         "find files with planets",
-        "list directory test-directory/excel",
+        "list directory ./excel",
         "read planets.xlsx",
         
         # Data operations

@@ -15,3 +15,6 @@ matplotlib>=3.7.1
 pandas>=2.2.0
 openpyxl>=3.1.2
 xlrd>=2.0.1
+scikit-learn>=1.3.0
+# Optional: neural embeddings backend (will fallback to TF-IDF if unavailable)
+sentence-transformers>=2.3.1
