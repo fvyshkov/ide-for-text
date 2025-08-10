@@ -132,6 +132,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
         },
         body: JSON.stringify({
           query: originalInput,
+          // If no chips selected, use currently open file as default context
           file_paths: attachedFiles.length ? attachedFiles : (currentFile ? [currentFile] : undefined),
           project_path: projectPath
         }),

@@ -713,6 +713,47 @@ async def get_file_content(path: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
 
+
+@app.get("/api/download")
+async def download_raw_file(path: str):
+    """Download a file as-is (raw bytes), regardless of type."""
+    if not os.path.exists(path) or os.path.isdir(path):
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(path)
+        return FileResponse(path, media_type=mime_type or 'application/octet-stream', filename=os.path.basename(path))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Download error: {str(e)}")
+
+
+@app.get("/api/archive-directory")
+async def archive_directory(path: str):
+    """Create a zip of the given directory and return it for download."""
+    abs_path = path
+    if not os.path.isabs(abs_path):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        abs_path = os.path.abspath(os.path.join(project_root, path))
+    if not os.path.exists(abs_path) or not os.path.isdir(abs_path):
+        raise HTTPException(status_code=400, detail="Path is not a directory")
+    try:
+        import tempfile, zipfile
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+        tmp_path = tmp.name
+        tmp.close()
+        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(abs_path):
+                # skip hidden
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for f in files:
+                    if f.startswith('.'): continue
+                    full = os.path.join(root, f)
+                    rel = os.path.relpath(full, abs_path)
+                    zf.write(full, rel)
+        return FileResponse(tmp_path, media_type='application/zip', filename=f"{os.path.basename(abs_path)}.zip")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Archive error: {str(e)}")
+
 @app.post("/api/write-file")
 async def write_file(request: FileWriteRequest):
     """Write content to file"""

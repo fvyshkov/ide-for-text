@@ -31,6 +31,90 @@ function App() {
     aiChatRef.current?.askQuestion(question);
   }, []);
 
+  // Export current project directory to a user-selected local folder via File System Access API
+  const exportToLocalFolder = useCallback(async () => {
+    try {
+      // Check API support
+      // @ts-ignore - experimental API
+      if (!window.showDirectoryPicker) {
+        alert('Export requires Chrome/Edge (File System Access API).');
+        return;
+      }
+      // @ts-ignore
+      const dirHandle: FileSystemDirectoryHandle = await window.showDirectoryPicker();
+      // Always create subfolder 'test-directory' inside chosen folder
+      // @ts-ignore
+      const rootOut: FileSystemDirectoryHandle = await dirHandle.getDirectoryHandle('test-directory', { create: true });
+
+      // Determine which directory to export: current root or test-directory
+      const sourcePath = rootPath || 'test-directory';
+      const resp = await fetch(`${API_BASE_URL}/api/open-directory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: sourcePath })
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const baseRoot: string = data.root_path;
+      const tree: any[] = data.tree || [];
+
+      const files: { abs: string; rel: string }[] = [];
+      const walk = (items: any[]) => {
+        for (const it of items) {
+          if (it.is_directory && it.children) walk(it.children);
+          else if (!it.is_directory) {
+            const rel = it.path.startsWith(baseRoot)
+              ? it.path.substring(baseRoot.length).replace(/^\/+/, '')
+              : it.path.split(/[/\\]/).pop();
+            files.push({ abs: it.path, rel });
+          }
+        }
+      };
+      walk(tree);
+
+      const ensureDir = async (root: FileSystemDirectoryHandle, segments: string[]): Promise<FileSystemDirectoryHandle> => {
+        let handle = root;
+        for (const seg of segments) {
+          if (!seg) continue;
+          // @ts-ignore
+          handle = await handle.getDirectoryHandle(seg, { create: true });
+        }
+        return handle;
+      };
+
+      const writeFileToHandle = async (root: FileSystemDirectoryHandle, relPath: string, blob: Blob) => {
+        const parts = relPath.split(/[/\\]+/);
+        const fileName = parts.pop() as string;
+        const dirHandle = await ensureDir(root, parts);
+        // @ts-ignore
+        const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+        // @ts-ignore
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+      };
+
+      for (const f of files) {
+        const r = await fetch(`${API_BASE_URL}/api/download?path=${encodeURIComponent(f.abs)}`);
+        if (!r.ok) throw new Error(`Download failed: ${f.rel}`);
+        const blob = await r.blob();
+        await writeFileToHandle(rootOut, f.rel, blob);
+      }
+
+      // Silent success (no blocking alert)
+      console.log('Export completed successfully.');
+      // After export, set server test-directory as current root in the app
+      try {
+        await loadDirectory('test-directory');
+      } catch (e) {
+        console.warn('Failed to switch to test-directory after export', e);
+      }
+    } catch (e: any) {
+      console.error('Export failed', e);
+      alert(`Export failed: ${e?.message || e}`);
+    }
+  }, [rootPath, loadDirectory]);
+
   // Function to receive update content ref from FileEditor
   const handleUpdateContentRef = useCallback((updateFn: (content: string) => void) => {
     updateEditorContentRef.current = updateFn;
@@ -324,20 +408,15 @@ function App() {
             onClick={handleOpenDirectory} 
             disabled={isLoading}
             title="Open folder"
+            aria-label="Open folder"
           >
             <FaFolder />
           </button>
           <button 
             className="toolbar-btn"
-            onClick={async () => {
-              try {
-                await loadDirectory('test-directory');
-              } catch (e) {
-                alert('Failed to open test-directory');
-              }
-            }}
-            title="Open test directory"
-            aria-label="Open test directory"
+            onClick={exportToLocalFolder}
+            title="Export to local folder"
+            aria-label="Export to local folder"
           >
             ★
           </button>
@@ -346,6 +425,7 @@ function App() {
             onClick={refreshFileTree} 
             disabled={isLoading || !rootPath}
             title="Refresh"
+            aria-label="Refresh"
           >
             <FaSync />
           </button>
