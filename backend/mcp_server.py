@@ -132,6 +132,7 @@ class MCPServer:
         original_cwd = os.getcwd()
         try:
             wd = os.path.abspath(workdir or self.output_dir)
+            # Allow workdir inside project_root or equal to it
             if not wd.startswith(self.project_root):
                 return MCPResponse(False, error="workdir outside project_root is not allowed")
             os.makedirs(wd, exist_ok=True)
@@ -193,7 +194,15 @@ class MCPServer:
             err = err_buffer.getvalue()
             if 'err' in exc:
                 return MCPResponse(False, error=f"{exc['err']}\n{exc.get('tb','')}")
-            return MCPResponse(True, {"ok": True, "stdout": out, "stderr": err, "outputs": outputs})
+            # If outputs are relative paths, normalize to absolute within wd
+            norm_outputs = []
+            for p in outputs:
+                try:
+                    ap = p if os.path.isabs(p) else os.path.abspath(os.path.join(wd, p))
+                    norm_outputs.append(ap)
+                except Exception:
+                    norm_outputs.append(p)
+            return MCPResponse(True, {"ok": True, "stdout": out, "stderr": err, "outputs": norm_outputs})
         except Exception as e:
             return MCPResponse(False, error=str(e))
         finally:

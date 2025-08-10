@@ -30,6 +30,8 @@ except Exception:
 import pandas as pd
 import json
 import numpy as np
+import base64
+import re
 try:
     from sentence_transformers import SentenceTransformer
     _HAS_ST = True
@@ -320,7 +322,10 @@ class TransparentAIAgent:
         
         # Define tools (optionally via MCP adapters)
         self.use_mcp_tools = os.getenv("USE_MCP_TOOLS", "false").lower() == "true"
-        self.current_base_dir = os.getcwd()
+        # Default base dir is repo root (parent of backend)
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(backend_dir)
+        self.current_base_dir = repo_root
         if self.use_mcp_tools:
             self.mcp_client = MCPClient(project_root=self.current_base_dir)
             # Use standalone shim class to avoid Pydantic attribute issues on inner classes
@@ -416,7 +421,19 @@ Thought: {agent_scratchpad}""")
             }
             
             # Resolve base directory for the project
-            base_dir = os.path.abspath(project_path) if project_path else os.getcwd()
+            base_dir = os.path.abspath(project_path) if project_path else self.current_base_dir
+            # Ensure tools (MCP) run in the selected project directory
+            self.current_base_dir = base_dir
+            if self.use_mcp_tools:
+                try:
+                    # Rebind MCP client to new project root if changed
+                    if getattr(getattr(self, 'mcp_client', None), 'server', None) is None or \
+                       getattr(self.mcp_client.server, 'project_root', None) != base_dir:
+                        self.mcp_client = MCPClient(project_root=base_dir)
+                        self.data_tool.client = self.mcp_client
+                        self.code_tool.client = self.mcp_client
+                except Exception:
+                    pass
 
             # Normalize attached files (absolute paths)
             explicit_attached_files: List[str] = []
@@ -427,75 +444,119 @@ Thought: {agent_scratchpad}""")
                         explicit_attached_files.append(abs_p)
 
             # Check if this is a data visualization request
-            visualization_keywords = ['chart', 'plot', 'visualization', 'pie', 'bar', 'line', 'scatter', 'area']
+            # Detect visualization intent (include English and common Russian keywords)
+            visualization_keywords = [
+                'chart', 'plot', 'visualization', 'diagram', 'graph',
+                'pie', 'bar', 'line', 'scatter', 'area',
+                # Russian stems/words (detection only; UI/messages remain English)
+                'граф', 'график', 'диаграм', 'диаграмма', 'построй', 'построи', 'построить', 'рисуй', 'построй график'
+            ]
             excel_keywords = ['.xlsx', '.xls', 'excel']
             csv_keywords = ['.csv']
             
-            is_visualization_request = any(keyword in query.lower() for keyword in visualization_keywords)
+            ql = query.lower()
+            is_visualization_request = any(keyword in ql for keyword in visualization_keywords)
             has_excel_reference = any(keyword in query.lower() for keyword in excel_keywords)
             has_csv_reference = any(keyword in query.lower() for keyword in csv_keywords)
+            has_tabular_attachment = any(p.lower().endswith(('.xlsx', '.xls', '.csv')) for p in explicit_attached_files)
+            # If user attached tabular data and asked for a chart in any language → treat as visualization
+            if has_tabular_attachment and any(k in ql for k in visualization_keywords):
+                is_visualization_request = True
             # Simple ReAct agent depends on tool results; domain-specific keywords removed
 
-            # Detect translation intent (supports Russian cue words by checking Cyrillic)
-            def contains_cyrillic(s: str) -> bool:
-                return any('а' <= ch <= 'я' or 'А' <= ch <= 'Я' for ch in s)
-
-            is_translate_intent = ('translate' in query.lower()) or ('перев' in query.lower())
-
-            # If translation requested and there is an attached text file → perform direct translation via LLM
-            if is_translate_intent and explicit_attached_files:
-                # Pick first text-like file
-                text_file = None
-                for ap in explicit_attached_files:
-                    lower = ap.lower()
-                    if lower.endswith(('.txt', '.md')):
-                        text_file = ap
-                        break
-                if text_file:
-                    # Read source content
+            # LLM planning for tasks with attached files (text, visualization, analysis, etc.)
+            if explicit_attached_files:
+                # Build a compact manifest for LLM context
+                manifest = {"files": []}
+                for pth in explicit_attached_files:
+                    item = {"path": pth, "name": os.path.basename(pth), "size": os.path.getsize(pth)}
                     try:
-                        try:
-                            with open(text_file, 'r', encoding='utf-8') as f:
-                                source_text = f.read()
-                        except UnicodeDecodeError:
-                            with open(text_file, 'r', encoding='latin-1') as f:
-                                source_text = f.read()
-                    except Exception as e:
-                        yield {"type": "final_result", "content": f"Failed to read file: {e}", "timestamp": int(time.time())}
-                        return
+                        if pth.lower().endswith(('.txt', '.md')):
+                            with open(pth, 'r', encoding='utf-8', errors='ignore') as f:
+                                data = f.read(4000)
+                            item["preview_text"] = data
+                        elif pth.lower().endswith('.csv'):
+                            dfp = pd.read_csv(pth, nrows=5)
+                            item["columns"] = dfp.columns.tolist()
+                            item["preview_rows"] = dfp.to_dict(orient='records')
+                        elif pth.lower().endswith(('.xlsx', '.xls')):
+                            dfx = pd.read_excel(pth, nrows=5)
+                            item["columns"] = dfx.columns.tolist()
+                            item["preview_rows"] = dfx.to_dict(orient='records')
+                    except Exception:
+                        pass
+                    manifest["files"].append(item)
 
-                    # Decide target language: if query contains Cyrillic or file content is mostly Cyrillic → translate to English, else to Russian
-                    target_lang = 'en' if contains_cyrillic(query) or contains_cyrillic(source_text) else 'ru'
-                    system_prompt = (
-                        "You are a high-quality translator. Preserve original formatting, whitespace, and lists. "
-                        "Do not add explanations. Output only the translated text."
-                    )
-                    user_prompt = f"Translate the following text into {'English' if target_lang=='en' else 'Russian'} and output only the translation:\n\n{source_text}"
+                system = (
+                    "You are an autonomous coding/assistant agent. Decide the best action for the user request.\n"
+                    "Return STRICT JSON with one of two shapes ONLY: \n"
+                    "{\"action\":\"write_file\", \"filename\":string, \"content_base64\":string, \"explain\":string} \n"
+                    "or {\"action\":\"run_python\", \"code\":string, \"explain\":string}.\n"
+                    "Guidance: If the task is translation/summarization/rewrite/extraction or any text-only task, use write_file and include the result text in UTF-8 Base64.\n"
+                    "If the task involves charts/plots/data analysis over CSV/Excel, use run_python and generate Python code that reads the provided files (pandas), builds the requested chart (matplotlib) and saves it to a PNG under the working directory."
+                )
+                prompt = (
+                    f"User query:\n{query}\n\nAttached files manifest (JSON):\n{json.dumps(manifest)[:4000]}\n\n"
+                    "Choose and return STRICT JSON now."
+                )
+                try:
+                    resp = self.llm.invoke(system + "\n\n" + prompt)
+                    text = resp.content if hasattr(resp, 'content') else str(resp)
+                except Exception as e:
+                    text = f"{{\"action\":\"error\",\"explain\":\"llm error: {e}\"}}"
 
-                    # Call LLM for translation
+                # Parse JSON from response
+                obj = None
+                m = re.search(r"\{[\s\S]*\}", text)
+                if m:
                     try:
-                        resp = self.llm.invoke(system_prompt + "\n\n" + user_prompt)
-                        translated = resp.content if hasattr(resp, 'content') else str(resp)
-                    except Exception as e:
-                        yield {"type": "final_result", "content": f"Translation error: {e}", "timestamp": int(time.time())}
-                        return
-
-                    # Save to file under base_dir
+                        obj = json.loads(m.group(0))
+                    except Exception:
+                        obj = None
+                if isinstance(obj, dict) and obj.get("action") == "write_file" and (obj.get("content_base64") or obj.get("content")):
                     ts = time.strftime("%Y%m%d_%H%M%S")
-                    stem = os.path.splitext(os.path.basename(text_file))[0]
-                    suffix = "_translated_en" if target_lang == 'en' else "_translated_ru"
-                    out_name = f"{stem}{suffix}_{ts}.txt"
-                    out_path = os.path.join(base_dir, out_name)
+                    suggested = obj.get("filename") or f"result_{ts}.txt"
+                    safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", suggested)
+                    out_path = os.path.join(base_dir, safe_name)
                     try:
+                        data_b64 = obj.get("content_base64")
+                        data_text = obj.get("content")
+                        if data_b64:
+                            decoded = base64.b64decode(re.sub(r"\s+", "", data_b64)).decode('utf-8', errors='replace')
+                        else:
+                            decoded = str(data_text)
                         with open(out_path, 'w', encoding='utf-8') as f:
-                            f.write(translated)
-                    except Exception as e:
-                        yield {"type": "final_result", "content": f"Failed to write translation: {e}", "timestamp": int(time.time())}
+                            f.write(decoded)
+                        yield {"type": "file_changed", "path": out_path}
+                        yield {"type": "final_result", "content": obj.get("explain", f"Saved to {safe_name}"), "timestamp": int(time.time())}
+                        yield {"type": "thinking_complete", "content": "✓ Completed via LLM plan", "timestamp": int(time.time())}
                         return
-
-                    yield {"type": "file_changed", "path": out_path}
-                    yield {"type": "final_result", "content": f"Translation saved to {out_name}", "timestamp": int(time.time())}
-                    yield {"type": "thinking_complete", "content": "✓ Translation completed!", "timestamp": int(time.time())}
+                    except Exception as e:
+                        yield {"type": "final_result", "content": f"Failed to write result: {e}", "timestamp": int(time.time())}
+                        return
+                elif isinstance(obj, dict) and obj.get("action") == "run_python" and obj.get("code"):
+                    # Execute Python code as directed by LLM
+                    py_code = obj.get("code")
+                    yield {"type": "tool_use", "content": "Executing generated Python code", "timestamp": int(time.time())}
+                    try:
+                        exec_result = self.code_tool._run(py_code)
+                    except Exception as e:
+                        yield {"type": "final_result", "content": f"Python execution error: {e}", "timestamp": int(time.time())}
+                        return
+                    # Try to detect any output files from the result text
+                    try:
+                        out_paths = []
+                        for line in str(exec_result).splitlines():
+                            line = line.strip()
+                            if line.startswith(base_dir) and os.path.exists(line):
+                                out_paths.append(line)
+                        for op in out_paths:
+                            yield {"type": "file_changed", "path": op}
+                    except Exception:
+                        pass
+                    yield {"type": "tool_result", "content": str(exec_result), "timestamp": int(time.time())}
+                    yield {"type": "final_result", "content": obj.get("explain", "Python code executed"), "timestamp": int(time.time())}
+                    yield {"type": "thinking_complete", "content": "✓ Completed via LLM plan", "timestamp": int(time.time())}
                     return
             
             # Direct visualization path
@@ -504,7 +565,6 @@ Thought: {agent_scratchpad}""")
                 data_path: Optional[str] = None
                 data_filename: Optional[str] = None
                 # Try to extract Excel/CSV filename from query
-                import re
                 file_pattern = r'([\w./-]+\.(?:xlsx|xls|csv))'
                 file_match = re.search(file_pattern, query, flags=re.IGNORECASE)
                 if file_match:
@@ -679,7 +739,6 @@ else:
                     }
                 elif "read" in query.lower():
                     # Try to extract file path
-                    import re
                     file_pattern = r'(?:read)\s+([^\s]+\.\w+)'
                     file_match = re.search(file_pattern, query.lower())
                     

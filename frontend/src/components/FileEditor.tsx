@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
+import '../monacoSetup';
 import { FileContent } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import ExcelViewer from './ExcelViewer';
@@ -144,10 +145,12 @@ const FileEditor: React.FC<FileEditorProps> = ({ fileContent, onContentChange, i
 
   return (
     <div className="file-editor">
-      <div className="file-editor-header">
-        <span className="file-name">{fileName}</span>
-        <span className="file-path">{fileContent.path}</span>
-      </div>
+      {!(fileContent.file_type === 'excel' || fileContent.file_type === 'csv') && (
+        <div className="file-editor-header">
+          <span className="file-name">{fileName}</span>
+          <span className="file-path">{fileContent.path}</span>
+        </div>
+      )}
       
       {fileContent && !isLoading && (
         fileContent.file_type === 'excel' || fileContent.file_type === 'csv' ? (
