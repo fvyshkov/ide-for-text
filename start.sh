@@ -69,6 +69,13 @@ kill_port 8001 "Backend"
 kill_port 3000 "Frontend"
 
 echo ""
+echo "🌿 Setting backend env flags (can be overridden before running this script)"
+export AI_AGENT_MODE=${AI_AGENT_MODE:-langchain}
+export USE_MCP_TOOLS=${USE_MCP_TOOLS:-true}
+echo "   AI_AGENT_MODE=$AI_AGENT_MODE"
+echo "   USE_MCP_TOOLS=$USE_MCP_TOOLS"
+
+echo ""
 echo "🔧 Starting backend server..."
 cd backend
 
@@ -78,8 +85,8 @@ if [ ! -d "venv" ] && [ ! -f ".venv_created" ]; then
     pip install -r requirements.txt
 fi
 
-# Start backend in background
-python main.py &
+# Start backend in background (uvicorn with auto-reload)
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload &
 BACKEND_PID=$!
 
 # Wait for backend to be ready

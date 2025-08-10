@@ -6,8 +6,9 @@ import os
 from typing import Dict, Any, Optional, AsyncGenerator
 
 # ========== CONFIGURATION ==========
-# Change this constant to switch between AI agent implementations
-USE_ADVANCED_AGENT = True  # True = Advanced ReAct agent, False = Simple agent
+# Use env flag to switch between AI agent implementations
+# AI_AGENT_MODE=langchain|simple
+USE_ADVANCED_AGENT = os.getenv("AI_AGENT_MODE", "langchain").lower() == "langchain"
 # ===================================
 
 # Session storage for both implementations
@@ -30,7 +31,10 @@ def get_ai_agent(session_id: str = "default"):
     
     if USE_ADVANCED_AGENT:
         # Use LangChain-backed transparent agent (ReAct)
-        from ai_agent_improved import TransparentAIAgent
+        try:
+            from .ai_agent_improved import TransparentAIAgent  # type: ignore
+        except Exception:
+            from backend.ai_agent_improved import TransparentAIAgent  # type: ignore
         
         if session_id not in _agent_sessions:
             print(f"Creating new TRANSPARENT (LangChain) AI agent for session: {session_id}")
@@ -41,7 +45,10 @@ def get_ai_agent(session_id: str = "default"):
         return _agent_sessions[session_id]
     else:
         # Import and use simple agent
-        from ai_agent_simple import SimpleAIAgent
+        try:
+            from .ai_agent_simple import SimpleAIAgent  # type: ignore
+        except Exception:
+            from backend.ai_agent_simple import SimpleAIAgent  # type: ignore
         
         if session_id not in _agent_sessions:
             print(f"Creating new SIMPLE AI agent for session: {session_id}")
@@ -80,9 +87,11 @@ def get_agent_info() -> Dict[str, Any]:
     Returns:
         Dictionary with agent configuration details
     """
+    current = _agent_sessions.get("default")
+    agent_class = type(current).__name__ if current is not None else ("TransparentAIAgent" if USE_ADVANCED_AGENT else "SimpleAIAgent")
     return {
         "mode": "advanced" if USE_ADVANCED_AGENT else "simple",
-        "agent_type": "DirectAIAgent" if USE_ADVANCED_AGENT else "SimpleAIAgent",
+        "agent_type": agent_class,
         "features": {
             "direct_tool_usage": USE_ADVANCED_AGENT,
             "visualization": USE_ADVANCED_AGENT,

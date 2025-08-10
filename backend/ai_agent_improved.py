@@ -18,6 +18,15 @@ from langchain.tools import Tool, BaseTool
 from langchain.prompts import PromptTemplate
 from langchain_core.messages import SystemMessage
 from pydantic import BaseModel, Field, ConfigDict
+from typing import Any
+
+# MCP (MVP) imports with hybrid fallback (package or script)
+try:
+    from .mcp_client import MCPClient  # type: ignore
+    from .tools.mcp_adapters import MCPRunPythonTool, MCPDataToolShim  # type: ignore
+except Exception:
+    from backend.mcp_client import MCPClient  # type: ignore
+    from backend.tools.mcp_adapters import MCPRunPythonTool, MCPDataToolShim  # type: ignore
 import pandas as pd
 import json
 import numpy as np
@@ -309,11 +318,20 @@ class TransparentAIAgent:
             StreamingStdOutCallbackHandler()
         ]
         
-        # Define tools
-        self.tools = [
-            UniversalDataTool(),
-            CodeExecutor()
-        ]
+        # Define tools (optionally via MCP adapters)
+        self.use_mcp_tools = os.getenv("USE_MCP_TOOLS", "false").lower() == "true"
+        self.current_base_dir = os.getcwd()
+        if self.use_mcp_tools:
+            self.mcp_client = MCPClient(project_root=self.current_base_dir)
+            # Use standalone shim class to avoid Pydantic attribute issues on inner classes
+            self.data_tool = MCPDataToolShim(client=self.mcp_client, base_dir_provider=lambda: self.current_base_dir)
+            self.code_tool = MCPRunPythonTool(client=self.mcp_client, workdir_provider=lambda: self.current_base_dir)
+            self.tools = [self.data_tool, self.code_tool]
+        else:
+            self.tools = [
+                UniversalDataTool(),
+                CodeExecutor()
+            ]
         
         # Prepare tool descriptions and names
         self.tool_descriptions = "\n".join([f"- {tool.name}: {tool.description}" for tool in self.tools])
@@ -351,19 +369,12 @@ Thought: {agent_scratchpad}""")
         
         # Create agent with our custom prompt
         # Partial the prompt with tool-related variables
-        from langchain.prompts import PromptTemplate
         from langchain_core.prompts import MessagesPlaceholder
-        
-        # Create a partial prompt with tool-related variables
-        partial_prompt = prompt_template.partial(
-            tools=self.tool_descriptions,
-            tool_names=self.tool_names
-        )
-        
+
         agent = create_react_agent(
             llm=self.llm,
             tools=self.tools,
-            prompt=partial_prompt
+            prompt=prompt_template.partial(tools=self.tool_descriptions, tool_names=self.tool_names)
         )
         
         # Create agent executor
@@ -424,6 +435,68 @@ Thought: {agent_scratchpad}""")
             has_excel_reference = any(keyword in query.lower() for keyword in excel_keywords)
             has_csv_reference = any(keyword in query.lower() for keyword in csv_keywords)
             # Simple ReAct agent depends on tool results; domain-specific keywords removed
+
+            # Detect translation intent (supports Russian cue words by checking Cyrillic)
+            def contains_cyrillic(s: str) -> bool:
+                return any('а' <= ch <= 'я' or 'А' <= ch <= 'Я' for ch in s)
+
+            is_translate_intent = ('translate' in query.lower()) or ('перев' in query.lower())
+
+            # If translation requested and there is an attached text file → perform direct translation via LLM
+            if is_translate_intent and explicit_attached_files:
+                # Pick first text-like file
+                text_file = None
+                for ap in explicit_attached_files:
+                    lower = ap.lower()
+                    if lower.endswith(('.txt', '.md')):
+                        text_file = ap
+                        break
+                if text_file:
+                    # Read source content
+                    try:
+                        try:
+                            with open(text_file, 'r', encoding='utf-8') as f:
+                                source_text = f.read()
+                        except UnicodeDecodeError:
+                            with open(text_file, 'r', encoding='latin-1') as f:
+                                source_text = f.read()
+                    except Exception as e:
+                        yield {"type": "final_result", "content": f"Failed to read file: {e}", "timestamp": int(time.time())}
+                        return
+
+                    # Decide target language: if query contains Cyrillic or file content is mostly Cyrillic → translate to English, else to Russian
+                    target_lang = 'en' if contains_cyrillic(query) or contains_cyrillic(source_text) else 'ru'
+                    system_prompt = (
+                        "You are a high-quality translator. Preserve original formatting, whitespace, and lists. "
+                        "Do not add explanations. Output only the translated text."
+                    )
+                    user_prompt = f"Translate the following text into {'English' if target_lang=='en' else 'Russian'} and output only the translation:\n\n{source_text}"
+
+                    # Call LLM for translation
+                    try:
+                        resp = self.llm.invoke(system_prompt + "\n\n" + user_prompt)
+                        translated = resp.content if hasattr(resp, 'content') else str(resp)
+                    except Exception as e:
+                        yield {"type": "final_result", "content": f"Translation error: {e}", "timestamp": int(time.time())}
+                        return
+
+                    # Save to file under base_dir
+                    ts = time.strftime("%Y%m%d_%H%M%S")
+                    stem = os.path.splitext(os.path.basename(text_file))[0]
+                    suffix = "_translated_en" if target_lang == 'en' else "_translated_ru"
+                    out_name = f"{stem}{suffix}_{ts}.txt"
+                    out_path = os.path.join(base_dir, out_name)
+                    try:
+                        with open(out_path, 'w', encoding='utf-8') as f:
+                            f.write(translated)
+                    except Exception as e:
+                        yield {"type": "final_result", "content": f"Failed to write translation: {e}", "timestamp": int(time.time())}
+                        return
+
+                    yield {"type": "file_changed", "path": out_path}
+                    yield {"type": "final_result", "content": f"Translation saved to {out_name}", "timestamp": int(time.time())}
+                    yield {"type": "thinking_complete", "content": "✓ Translation completed!", "timestamp": int(time.time())}
+                    return
             
             # Direct visualization path
             if is_visualization_request:

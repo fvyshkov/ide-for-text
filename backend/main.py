@@ -18,7 +18,13 @@ import pandas as pd
 import openpyxl
 
 # AI Agent import - using manager for version switching
-from ai_agent_manager import get_ai_agent, clear_session, get_agent_info
+# Support both "python -m uvicorn backend.main:app" (package) and "python backend/main.py" (script)
+try:
+    from .ai_agent_manager import get_ai_agent, clear_session, get_agent_info  # type: ignore
+except Exception:
+    import sys, os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from backend.ai_agent_manager import get_ai_agent, clear_session, get_agent_info  # type: ignore
 # import magic  # Temporarily disabled due to libmagic dependency issues
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -519,7 +525,10 @@ def build_file_tree(directory: str, max_depth: int = 10, current_depth: int = 0)
     
     return items
 
-from tools.data_analysis import intelligent_data_visualization
+try:
+    from .tools.data_analysis import intelligent_data_visualization  # type: ignore
+except Exception:
+    from backend.tools.data_analysis import intelligent_data_visualization  # type: ignore
 
 @app.post("/api/visualize-data")
 async def visualize_data(file_path: str):
@@ -866,7 +875,10 @@ async def test_ai():
 async def get_ai_info():
     """Get information about current AI agent configuration"""
     try:
-        from ai_agent_manager import get_agent_info
+        try:
+            from .ai_agent_manager import get_agent_info  # type: ignore
+        except Exception:
+            from backend.ai_agent_manager import get_agent_info  # type: ignore
         agent = get_ai_agent()
         info = get_agent_info()
         info["agent_class"] = type(agent).__name__
