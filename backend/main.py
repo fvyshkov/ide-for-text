@@ -66,9 +66,12 @@ async def startup_event():
         print(f"Test directory not found: {test_dir}")
 
 # CORS middleware for frontend communication
+# In production, set FRONTEND_ORIGINS as comma-separated list, e.g. "https://your-frontend.onrender.com"
+origins_env = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000")
+allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
