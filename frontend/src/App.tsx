@@ -37,7 +37,7 @@ function App() {
       // Check API support
       // @ts-ignore - experimental API
       if (!window.showDirectoryPicker) {
-        alert('Export requires Chrome/Edge (File System Access API).');
+        console.warn('Export requires Chrome/Edge (File System Access API).');
         return;
       }
       // @ts-ignore
@@ -103,17 +103,16 @@ function App() {
 
       // Silent success (no blocking alert)
       console.log('Export completed successfully.');
-      // After export, set server test-directory as current root in the app
+      // After export, switch to the exported path under server project: ensure we open the same directory used for export
       try {
-        await loadDirectory('test-directory');
+        await loadDirectory(rootPath || 'test-directory');
       } catch (e) {
-        console.warn('Failed to switch to test-directory after export', e);
+        console.warn('Failed to switch directory after export', e);
       }
     } catch (e: any) {
       console.error('Export failed', e);
-      alert(`Export failed: ${e?.message || e}`);
     }
-  }, [rootPath, loadDirectory]);
+  }, [rootPath]);
 
   // Function to receive update content ref from FileEditor
   const handleUpdateContentRef = useCallback((updateFn: (content: string) => void) => {
