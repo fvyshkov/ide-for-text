@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field, ConfigDict
@@ -54,16 +55,22 @@ async def startup_event():
     print("Starting file watcher...")
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
-    test_dir = os.path.join(parent_dir, "test-directory")
-    
-    if os.path.exists(test_dir):
-        print(f"Adding {test_dir} to file watcher")
-        observer.schedule(file_watcher, test_dir, recursive=True)
-        file_watcher.watched_paths.add(test_dir)
-        observer.start()
-        print("File watcher started!")
+    project_root = os.path.dirname(current_dir)  # repo root
+    # Watch project root by default in hosted environments
+    path_to_watch = os.getenv("WATCH_PATH", os.path.join(parent_dir, "test-directory"))
+    if not os.path.isabs(path_to_watch):
+        path_to_watch = os.path.join(parent_dir, path_to_watch)
+    if os.path.exists(path_to_watch):
+        print(f"Adding {path_to_watch} to file watcher")
+        try:
+            observer.schedule(file_watcher, path_to_watch, recursive=True)
+            file_watcher.watched_paths.add(path_to_watch)
+            observer.start()
+            print("File watcher started!")
+        except Exception as e:
+            print(f"Watcher error: {e}")
     else:
-        print(f"Test directory not found: {test_dir}")
+        print(f"Watch path not found: {path_to_watch}")
 
 # CORS middleware for frontend communication
 # In production, set FRONTEND_ORIGINS as comma-separated list, e.g. "https://your-frontend.onrender.com"
@@ -614,6 +621,47 @@ async def open_directory(request: OpenDirectoryRequest):
         return {"tree": file_tree, "root_path": directory_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading directory: {str(e)}")
+
+
+@app.post("/api/upload-files")
+async def upload_files(
+    base_dir: str = Form("."),
+    files: List[UploadFile] = File(...)
+):
+    """Client-side upload endpoint. Saves uploaded files under base_dir on server.
+    base_dir can be absolute or relative to project root.
+    Returns saved paths and a refreshed file tree for base_dir.
+    """
+    try:
+        # Resolve base directory
+        if os.path.isabs(base_dir):
+            target_root = base_dir
+        else:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            target_root = os.path.abspath(os.path.join(project_root, base_dir))
+        os.makedirs(target_root, exist_ok=True)
+
+        saved_paths: List[str] = []
+        for uf in files:
+            filename = os.path.basename(uf.filename)
+            safe_name = filename.replace("..", "_").replace("/", "_").replace("\\", "_")
+            target_path = os.path.join(target_root, safe_name)
+            async with aiofiles.open(target_path, 'wb') as out:
+                content = await uf.read()
+                await out.write(content)
+            saved_paths.append(target_path)
+            # Mark as saved to prevent duplicate events
+            file_watcher.mark_as_web_saved(target_path)
+
+        # Ensure watcher monitors this directory
+        if target_root not in file_watcher.watched_paths:
+            observer.schedule(file_watcher, target_root, recursive=True)
+            file_watcher.watched_paths.add(target_root)
+
+        tree = build_file_tree(target_root)
+        return {"success": True, "saved": saved_paths, "root_path": target_root, "tree": tree}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
 @app.get("/api/file-content")
 async def get_file_content(path: str):

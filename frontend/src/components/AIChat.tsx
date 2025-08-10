@@ -124,7 +124,8 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
 
     try {
       // Call our real AI API with streaming
-      const response = await fetch('http://localhost:8001/api/ai/analyze', {
+      const apiBase = process.env.REACT_APP_API_BASE_URL || window.location.origin.replace(/\/$/, '').replace(/$/,'');
+      const response = await fetch(`${apiBase}/api/ai/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

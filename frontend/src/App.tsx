@@ -7,10 +7,12 @@ import AIChat from './components/AIChat';
 import { FileTreeItem, FileContent } from './types';
 import { useTheme } from './contexts/ThemeContext';
 import { useWebSocket } from './hooks/useWebSocket';
+import { API_BASE_URL } from './utils/config';
 // Native directory picker functionality
 import { FaSun, FaMoon, FaFolder, FaSync } from 'react-icons/fa';
 
-const API_BASE_URL = 'http://localhost:8001';
+// Derive WS endpoint from API base
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
 
 function App() {
   const { theme, toggleTheme } = useTheme();
@@ -22,6 +24,7 @@ function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const aiChatRef = useRef<any>(null);
   const updateEditorContentRef = useRef<((content: string) => void) | null>(null);
+  // No upload UI per request
 
   // Function to ask AI a question
   const askAI = useCallback((question: string) => {
@@ -181,7 +184,7 @@ function App() {
 
   // WebSocket connection for live updates
   const { sendMessage } = useWebSocket({
-    url: 'ws://localhost:8001/ws',
+    url: `${WS_BASE_URL}/ws`,
     onMessage: handleWebSocketMessage,
     reconnectInterval: 3000,
     maxReconnectAttempts: 5,
@@ -190,6 +193,12 @@ function App() {
 
   const openDirectory = useCallback(async () => {
     try {
+      // On hosted environments (not localhost) skip OS picker and load project root
+      const isHosted = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+      if (isHosted) {
+        await loadDirectory('.');
+        return;
+      }
       // Use backend system folder picker for reliable full path
       const response = await fetch(`${API_BASE_URL}/api/pick-directory`, {
         method: 'POST',
@@ -230,8 +239,9 @@ function App() {
     localStorage.removeItem('ide-last-directory');
 
     const initializeDirectory = async () => {
-      // Start with test directory
-      const directoryToLoad = 'test-directory';
+      // Choose default directory: local dev → test-directory; hosted → project root
+      const isHosted = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+      const directoryToLoad = isHosted ? '.' : 'test-directory';
       
       try {
         await loadDirectory(directoryToLoad);
@@ -321,29 +331,14 @@ function App() {
             className="toolbar-btn"
             onClick={async () => {
               try {
-                const pick = await fetch(`${API_BASE_URL}/api/pick-directory`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-                let data: any = null;
-                try { data = await pick.json(); } catch { data = null; }
-                if (!pick.ok || !data || !data.success || !data.path) {
-                  throw new Error(data?.message || `Folder picking failed (HTTP ${pick.status})`);
-                }
-                const resp = await fetch(`${API_BASE_URL}/api/bootstrap-sample`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ base_path: data.path, sample_name: 'sample-project', force: true })
-                });
-                let result: any = null;
-                try { result = await resp.json(); } catch { result = null; }
-                if (!resp.ok || !result || !result.success) throw new Error(result?.detail || `HTTP ${resp.status}`);
-                if (result.root_path) await loadDirectory(result.root_path);
+                await loadDirectory('test-directory');
               } catch (e) {
-                alert(`Failed to create sample project: ${e instanceof Error ? e.message : 'unknown error'}`);
+                alert('Failed to open test-directory');
               }
             }}
-            title="Create sample project"
-            aria-label="Create sample project"
+            title="Open test directory"
+            aria-label="Open test directory"
           >
-            {/* Wizard-like icon via emoji placeholder is not used; keep button minimal per request */}
             ★
           </button>
           <button 
@@ -354,6 +349,7 @@ function App() {
           >
             <FaSync />
           </button>
+          {/* Upload controls removed as requested */}
         </div>
       </div>
       
