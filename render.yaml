@@ -1,9 +1,20 @@
 services:
+  - type: static_site
+    name: text-ide-frontend
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_BASE_URL
+        fromService:
+          name: text-ide-backend
+          type: web
+          property: url
+
   - type: web
     name: text-ide-backend
     env: python
     rootDir: .
-    plan: starter
     buildCommand: |
       pip install --upgrade pip
       pip install -r backend/requirements.txt
@@ -17,18 +28,9 @@ services:
       # - key: ANTHROPIC_API_KEY
       #   sync: false
       - key: FRONTEND_ORIGINS
-        value: https://text-ide-frontend.onrender.com
-
-  - type: static
-    name: text-ide-frontend
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: build
-    envVars:
-      - key: REACT_APP_API_BASE_URL
         fromService:
-          name: text-ide-backend
-          type: web
-          property: host
+          name: text-ide-frontend
+          type: static_site
+          property: url
 
 
