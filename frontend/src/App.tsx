@@ -276,10 +276,10 @@ function App() {
 
   const openDirectory = useCallback(async () => {
     try {
-      // On hosted environments (not localhost) skip OS picker and load project root
+      // On hosted environments (not localhost) skip OS picker and open test-directory
       const isHosted = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
       if (isHosted) {
-        await loadDirectory('.');
+        await loadDirectory('test-directory');
         return;
       }
       // Use backend system folder picker for reliable full path
@@ -301,13 +301,12 @@ function App() {
           await loadDirectory(fjson.path);
           return;
         }
-        alert('Error opening directory picker');
+        console.warn('Error opening directory picker');
         return;
       }
       await loadDirectory(data.path);
     } catch (error) {
       console.error('Directory picker error:', error);
-      alert('Directory picker error');
     }
   }, [loadDirectory]);
 
@@ -322,9 +321,8 @@ function App() {
     localStorage.removeItem('ide-last-directory');
 
     const initializeDirectory = async () => {
-      // Choose default directory: local dev → test-directory; hosted → project root
-      const isHosted = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
-      const directoryToLoad = isHosted ? '.' : 'test-directory';
+      // Always start from server test-directory on load (hosted & local)
+      const directoryToLoad = 'test-directory';
       
       try {
         await loadDirectory(directoryToLoad);
