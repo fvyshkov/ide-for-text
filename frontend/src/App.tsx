@@ -177,7 +177,6 @@ function App() {
       localStorage.setItem('ide-last-directory', data.root_path);
     } catch (error) {
       console.error('Error opening directory:', error);
-      alert(`Error opening directory "${directoryPath}". Make sure the directory exists.`);
     } finally {
       setIsLoading(false);
     }

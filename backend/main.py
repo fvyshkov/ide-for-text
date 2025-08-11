@@ -56,6 +56,35 @@ async def startup_event():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     parent_dir = os.path.dirname(current_dir)
     project_root = os.path.dirname(current_dir)  # repo root
+
+    # Ensure sample test-directory exists with demo content if missing
+    try:
+        sample_dir = os.path.join(project_root, "test-directory")
+        if not os.path.exists(sample_dir):
+            os.makedirs(sample_dir, exist_ok=True)
+            # Create minimal demo files
+            csv_path = os.path.join(sample_dir, "planets.csv")
+            if not os.path.exists(csv_path):
+                with open(csv_path, 'w', encoding='utf-8') as f:
+                    f.write("Planet,Mean Diameter (km),Mass (10^24 kg),Average Distance from Sun (10^6 km)\n")
+                    f.write("Mercury,4880,0.33,57.9\nVenus,12104,4.87,108.2\nEarth,12742,5.97,149.6\n")
+                    f.write("Mars,6779,0.642,227.9\nJupiter,139820,1898,778.5\nSaturn,116460,568,1433.5\n")
+                    f.write("Uranus,50724,86.8,2872.5\nNeptune,49244,102,4495.1\n")
+            txt_path = os.path.join(sample_dir, "Sing a Song of Sixpence.txt")
+            if not os.path.exists(txt_path):
+                with open(txt_path, 'w', encoding='utf-8') as f:
+                    f.write(
+                        "Sing a song of sixpence, a pocket full of rye,\n"
+                        "Four and twenty blackbirds baked in a pie;\n"
+                        "When the pie was opened, the birds began to sing;\n"
+                        "Wasn't that a dainty dish to set before the king?\n\n"
+                        "The king was in his counting house, counting out his money;\n"
+                        "The queen was in the parlour, eating bread and honey;\n"
+                        "The maid was in the garden, hanging out the clothes;\n"
+                        "Along came a blackbird and pecked off her nose.\n"
+                    )
+    except Exception as e:
+        print(f"Failed to initialize sample directory: {e}")
     # Watch project root by default in hosted environments
     path_to_watch = os.getenv("WATCH_PATH", os.path.join(parent_dir, "test-directory"))
     if not os.path.isabs(path_to_watch):
@@ -596,6 +625,21 @@ async def open_directory(request: OpenDirectoryRequest):
     else:
         # Just path - treat as relative to project root
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Auto-create sample test-directory if requested
+        if directory_path == 'test-directory':
+            sample_dir = os.path.join(project_root, 'test-directory')
+            if not os.path.exists(sample_dir):
+                try:
+                    os.makedirs(sample_dir, exist_ok=True)
+                    with open(os.path.join(sample_dir, 'Sing a Song of Sixpence.txt'), 'w', encoding='utf-8') as f:
+                        f.write(
+                            "Sing a song of sixpence, a pocket full of rye,\n"
+                            "Four and twenty blackbirds baked in a pie;\n"
+                            "When the pie was opened, the birds began to sing;\n"
+                            "Wasn't that a dainty dish to set before the king?\n"
+                        )
+                except Exception as e:
+                    print(f"Failed to create sample dir: {e}")
         directory_path = os.path.abspath(os.path.join(project_root, directory_path))
     
     print(f"Absolute path: {directory_path}")
