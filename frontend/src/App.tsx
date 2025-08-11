@@ -103,9 +103,9 @@ function App() {
 
       // Silent success (no blocking alert)
       console.log('Export completed successfully.');
-      // After export, switch to the exported path under server project: ensure we open the same directory used for export
+      // After export, use server 'test-directory' as the current directory
       try {
-        await loadDirectory(rootPath || 'test-directory');
+        await loadDirectory('test-directory');
       } catch (e) {
         console.warn('Failed to switch directory after export', e);
       }
