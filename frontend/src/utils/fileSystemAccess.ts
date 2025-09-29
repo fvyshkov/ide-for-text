@@ -32,7 +32,7 @@ export async function readDirectoryTree(
         name: entry.name,
         path: itemPath,
         is_directory: false,
-        children: null
+        children: undefined
       });
     }
   }
