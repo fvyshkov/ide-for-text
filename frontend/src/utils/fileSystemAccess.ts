@@ -9,16 +9,17 @@ import { FileTreeItem, FileContent } from '../types';
  * Recursively read directory tree from FileSystemDirectoryHandle
  */
 export async function readDirectoryTree(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: any,
   parentPath: string = ''
 ): Promise<FileTreeItem[]> {
   const items: FileTreeItem[] = [];
 
+  // @ts-ignore - File System Access API types
   for await (const entry of dirHandle.values()) {
     const itemPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
     if (entry.kind === 'directory') {
-      const subDirHandle = entry as FileSystemDirectoryHandle;
+      const subDirHandle = entry;
       const children = await readDirectoryTree(subDirHandle, itemPath);
       items.push({
         name: entry.name,
@@ -48,20 +49,20 @@ export async function readDirectoryTree(
  * Read file content from a path within the directory handle
  */
 export async function readFileFromHandle(
-  rootHandle: FileSystemDirectoryHandle,
+  rootHandle: any,
   filePath: string
 ): Promise<FileContent> {
   const pathParts = filePath.split('/').filter(p => p);
 
   // Navigate to the file
-  let currentHandle: FileSystemDirectoryHandle | FileSystemFileHandle = rootHandle;
+  let currentHandle: any = rootHandle;
 
   for (let i = 0; i < pathParts.length - 1; i++) {
-    currentHandle = await (currentHandle as FileSystemDirectoryHandle).getDirectoryHandle(pathParts[i]);
+    currentHandle = await currentHandle.getDirectoryHandle(pathParts[i]);
   }
 
   const fileName = pathParts[pathParts.length - 1];
-  const fileHandle = await (currentHandle as FileSystemDirectoryHandle).getFileHandle(fileName);
+  const fileHandle = await currentHandle.getFileHandle(fileName);
   const file = await fileHandle.getFile();
 
   // Check if file is binary (simple heuristic)
@@ -92,14 +93,14 @@ export async function readFileFromHandle(
  * Write content to a file within the directory handle
  */
 export async function writeFileToHandle(
-  rootHandle: FileSystemDirectoryHandle,
+  rootHandle: any,
   filePath: string,
   content: string
 ): Promise<void> {
   const pathParts = filePath.split('/').filter(p => p);
 
   // Navigate to the parent directory, creating directories as needed
-  let currentHandle: FileSystemDirectoryHandle = rootHandle;
+  let currentHandle: any = rootHandle;
 
   for (let i = 0; i < pathParts.length - 1; i++) {
     currentHandle = await currentHandle.getDirectoryHandle(pathParts[i], { create: true });
@@ -124,15 +125,15 @@ export function isFileSystemAccessSupported(): boolean {
  * Store to keep track of the current directory handle
  */
 class FileSystemStore {
-  private rootHandle: FileSystemDirectoryHandle | null = null;
+  private rootHandle: any = null;
   private rootPath: string = '';
 
-  setRoot(handle: FileSystemDirectoryHandle, path: string) {
+  setRoot(handle: any, path: string) {
     this.rootHandle = handle;
     this.rootPath = path;
   }
 
-  getRoot(): FileSystemDirectoryHandle | null {
+  getRoot(): any {
     return this.rootHandle;
   }
 
