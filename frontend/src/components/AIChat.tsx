@@ -3,6 +3,7 @@ import { FaPaperPlane, FaRobot, FaUser, FaTrash, FaBrain, FaTools, FaCheckCircle
 import './AIChat.css';
 // Import API to work with files
 import { openFile } from '../utils/fileUtils';
+import { API_BASE_URL } from '../utils/config';
 
 interface Message {
   id: string;
@@ -124,8 +125,7 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
 
     try {
       // Call our real AI API with streaming
-      const apiBase = process.env.REACT_APP_API_BASE_URL || window.location.origin.replace(/\/$/, '').replace(/$/,'');
-      const response = await fetch(`${apiBase}/api/ai/analyze`, {
+      const response = await fetch(`${API_BASE_URL}/api/ai/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
