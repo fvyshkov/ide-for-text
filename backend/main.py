@@ -859,11 +859,27 @@ async def pick_directory_api(test_mode: bool = False):
     test_mode=True will return repository test-directory for convenience.
     """
     print(f"/api/pick-directory called, test_mode={test_mode}")
-    if test_mode:
+    
+    # Check for hosted environment first (more aggressive detection)
+    is_hosted = (
+        os.getenv("RENDER") or  # Render.com
+        os.getenv("VERCEL") or  # Vercel
+        os.getenv("NETLIFY") or  # Netlify
+        os.getenv("HEROKU_APP_NAME") or  # Heroku
+        os.getenv("AWS_LAMBDA_FUNCTION_NAME") or  # AWS Lambda
+        os.getenv("RAILWAY_ENVIRONMENT") or  # Railway
+        os.getenv("REPL_ID") or  # Replit
+        os.getenv("CODESPACE_NAME") or  # GitHub Codespaces
+        not os.getenv("DISPLAY") or  # No display environment
+        os.getenv("USER") == "render"  # Render.com user
+    )
+    
+    if is_hosted or test_mode:
+        print(f"🌐 Hosted environment detected (is_hosted={is_hosted}, test_mode={test_mode})")
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         test_dir = os.path.join(project_root, "test-directory")
-        print(f"Returning test directory: {test_dir}")
-        return {"path": test_dir, "success": True}
+        print(f"📁 Returning test directory: {test_dir}")
+        return {"path": test_dir, "success": True, "message": "Using default directory in hosted environment"}
     try:
         # On macOS prefer AppleScript (proved working earlier); otherwise use Tkinter
         if platform.system() == "Darwin":  # macOS AppleScript first
@@ -911,26 +927,9 @@ async def pick_directory_api(test_mode: bool = False):
                 return {"path": os.path.abspath(folder_path), "success": True}
             return {"path": None, "success": False, "message": "User cancelled"}
 
-        # No picker available - check if we're in a hosted environment
-        print("No GUI folder picker available")
-        # Check for common hosted environment indicators
-        is_hosted = (
-            os.getenv("RENDER") or  # Render.com
-            os.getenv("VERCEL") or  # Vercel
-            os.getenv("NETLIFY") or  # Netlify
-            os.getenv("HEROKU_APP_NAME") or  # Heroku
-            os.getenv("AWS_LAMBDA_FUNCTION_NAME") or  # AWS Lambda
-            not os.getenv("DISPLAY")  # No display environment
-        )
-        
-        if is_hosted:
-            # In hosted environments, return test directory instead of error
-            print("Detected hosted environment, returning test directory")
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            test_dir = os.path.join(project_root, "test-directory")
-            return {"path": test_dir, "success": True, "message": "Using default directory in hosted environment"}
-        else:
-            return {"path": None, "success": False, "message": "System folder picker not available"}
+        # No picker available
+        print("❌ No GUI folder picker available")
+        return {"path": None, "success": False, "message": "System folder picker not available"}
             
     except subprocess.TimeoutExpired:
         print("Folder picker timeout")

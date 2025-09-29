@@ -274,8 +274,10 @@ function App() {
   });
 
   const openDirectory = useCallback(async () => {
+    console.log('🔍 Open Directory button clicked');
     try {
       // Try backend system folder picker first (works on both local and hosted environments)
+      console.log('📡 Calling backend picker:', `${API_BASE_URL}/api/pick-directory`);
       const response = await fetch(`${API_BASE_URL}/api/pick-directory`, {
         method: 'POST',
         headers: {
@@ -283,36 +285,56 @@ function App() {
         },
       });
 
+      console.log('📡 Response status:', response.status, response.statusText);
+      
       let data: any = null;
-      try { data = await response.json(); } catch { data = null; }
+      try { 
+        data = await response.json(); 
+        console.log('📊 Response data:', data);
+      } catch (e) { 
+        console.error('❌ Failed to parse JSON:', e);
+        data = null; 
+      }
       
       if (response.ok && data && data.success && data.path) {
         // Successfully got a directory path from the picker
+        console.log('✅ Got directory path:', data.path);
         await loadDirectory(data.path);
         return;
       }
       
       // If the picker failed or user cancelled, try test mode fallback
+      console.log('⚠️ Primary picker failed, trying test mode fallback');
       const fallback = await fetch(`${API_BASE_URL}/api/pick-directory?test_mode=true`, { method: 'POST' });
+      console.log('📡 Fallback response status:', fallback.status);
+      
       let fjson: any = null;
-      try { fjson = await fallback.json(); } catch { fjson = null; }
+      try { 
+        fjson = await fallback.json(); 
+        console.log('📊 Fallback data:', fjson);
+      } catch (e) { 
+        console.error('❌ Failed to parse fallback JSON:', e);
+        fjson = null; 
+      }
       
       if (fallback.ok && fjson && fjson.success && fjson.path) {
+        console.log('✅ Using fallback path:', fjson.path);
         await loadDirectory(fjson.path);
         return;
       }
       
       // If everything fails, open the default test-directory
-      console.warn('Directory picker unavailable, opening default test directory');
+      console.warn('⚠️ Directory picker unavailable, opening default test directory');
       await loadDirectory('test-directory');
       
     } catch (error) {
-      console.error('Directory picker error:', error);
+      console.error('❌ Directory picker error:', error);
       // Final fallback: open test-directory
       try {
+        console.log('🔄 Final fallback: test-directory');
         await loadDirectory('test-directory');
       } catch (fallbackError) {
-        console.error('Failed to open fallback directory:', fallbackError);
+        console.error('❌ Failed to open fallback directory:', fallbackError);
       }
     }
   }, [loadDirectory]);
@@ -465,7 +487,7 @@ function App() {
     <div className="App">
       <div className="app-header">
         <div className="header-left">
-          <h1>Text IDE+++</h1>
+          <h1>Text IDE 🔧 Fixed</h1>
           {rootPath && (
             <div className="current-directory">
               <span className="directory-label">Directory:</span>
