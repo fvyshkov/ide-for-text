@@ -465,7 +465,7 @@ function App() {
     <div className="App">
       <div className="app-header">
         <div className="header-left">
-          <h1>Text IDE</h1>
+          <h1>Text IDE+++</h1>
           {rootPath && (
             <div className="current-directory">
               <span className="directory-label">Directory:</span>
