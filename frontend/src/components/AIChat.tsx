@@ -4,6 +4,7 @@ import './AIChat.css';
 // Import API to work with files
 import { openFile } from '../utils/fileUtils';
 import { API_BASE_URL } from '../utils/config';
+import { fileSystemStore, readFileFromHandle } from '../utils/fileSystemAccess';
 
 interface Message {
   id: string;
@@ -26,10 +27,11 @@ interface AIChatProps {
   currentFile?: string;
   projectPath?: string;
   onFileGenerated?: (path: string) => void;
+  clientSideMode?: boolean;
 }
 
 const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIChatProps>((props, ref) => {
-  const { currentFile, projectPath, onFileGenerated } = props;
+  const { currentFile, projectPath, onFileGenerated, clientSideMode = false } = props;
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -124,18 +126,46 @@ const AIChat = React.forwardRef<{ askQuestion: (question: string) => void }, AIC
     }, 0);
 
     try {
+      // In client-side mode, read file contents locally before sending to API
+      let fileContentsMap: { [path: string]: string } = {};
+
+      if (clientSideMode) {
+        const rootHandle = fileSystemStore.getRoot();
+        if (rootHandle) {
+          const filesToRead = attachedFiles.length ? attachedFiles : (currentFile ? [currentFile] : []);
+
+          for (const filePath of filesToRead) {
+            try {
+              const fileContent = await readFileFromHandle(rootHandle, filePath);
+              if (!fileContent.is_binary) {
+                fileContentsMap[filePath] = fileContent.content;
+              }
+            } catch (error) {
+              console.warn(`Failed to read file ${filePath}:`, error);
+            }
+          }
+        }
+      }
+
       // Call our real AI API with streaming
+      const requestBody: any = {
+        query: originalInput,
+        project_path: projectPath
+      };
+
+      // In client-side mode, send file contents directly; otherwise send file paths
+      if (clientSideMode && Object.keys(fileContentsMap).length > 0) {
+        requestBody.file_contents = fileContentsMap;
+      } else if (!clientSideMode) {
+        requestBody.file_paths = attachedFiles.length ? attachedFiles : (currentFile ? [currentFile] : undefined);
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/ai/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          query: originalInput,
-          // If no chips selected, use currently open file as default context
-          file_paths: attachedFiles.length ? attachedFiles : (currentFile ? [currentFile] : undefined),
-          project_path: projectPath
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

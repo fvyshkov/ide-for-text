@@ -555,17 +555,18 @@ function App() {
   // Right panel: AI Chat
   const rightPanel = useMemo(() => (
     <div className="right-panel">
-      <AIChat 
+      <AIChat
         ref={aiChatRef}
         currentFile={selectedFile || undefined}
         projectPath={rootPath || undefined}
+        clientSideMode={clientSideMode}
         onFileGenerated={(path: string) => {
           setSelectedFile(path);
           loadFileContent(path);
         }}
       />
     </div>
-  ), [selectedFile, rootPath]);
+  ), [selectedFile, rootPath, clientSideMode, loadFileContent]);
 
   return (
     <div className="App">

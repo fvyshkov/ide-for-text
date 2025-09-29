@@ -239,6 +239,7 @@ class AIAnalysisRequest(BaseModel):
     project_path: Optional[str] = None
     reset_context: bool = False
     file_paths: Optional[List[str]] = None
+    file_contents: Optional[Dict[str, str]] = None  # For client-side mode: {path: content}
 
     model_config = ConfigDict(
         json_schema_extra = {
@@ -985,14 +986,18 @@ async def analyze_with_ai(request: AIAnalysisRequest):
         reset_context = getattr(request, 'reset_context', False)
         
         agent = get_ai_agent(session_id)
-        
+
+        # If file_contents provided (client-side mode), use them directly
+        # Otherwise use file_paths to read from server
+        file_paths_or_contents = request.file_contents if request.file_contents else request.file_paths
+
         async def generate_stream():
             """Generate streaming response"""
             async for thought in agent.analyze(
                 request.query,
                 request.project_path,
                 reset_context,
-                request.file_paths,
+                file_paths_or_contents,
             ):
                 # Format as Server-Sent Events
                 data = json.dumps(thought)
