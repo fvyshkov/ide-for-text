@@ -275,13 +275,7 @@ function App() {
 
   const openDirectory = useCallback(async () => {
     try {
-      // On hosted environments (not localhost) skip OS picker and open test-directory
-      const isHosted = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
-      if (isHosted) {
-        await loadDirectory('test-directory');
-        return;
-      }
-      // Use backend system folder picker for reliable full path
+      // Try backend system folder picker first (works on both local and hosted environments)
       const response = await fetch(`${API_BASE_URL}/api/pick-directory`, {
         method: 'POST',
         headers: {
@@ -291,21 +285,35 @@ function App() {
 
       let data: any = null;
       try { data = await response.json(); } catch { data = null; }
-      if (!(response.ok && data && data.success && data.path)) {
-        // Fallback to test mode for development
-        const fallback = await fetch(`${API_BASE_URL}/api/pick-directory?test_mode=true`, { method: 'POST' });
-        let fjson: any = null;
-        try { fjson = await fallback.json(); } catch { fjson = null; }
-        if (fallback.ok && fjson && fjson.success && fjson.path) {
-          await loadDirectory(fjson.path);
-          return;
-        }
-        console.warn('Error opening directory picker');
+      
+      if (response.ok && data && data.success && data.path) {
+        // Successfully got a directory path from the picker
+        await loadDirectory(data.path);
         return;
       }
-      await loadDirectory(data.path);
+      
+      // If the picker failed or user cancelled, try test mode fallback
+      const fallback = await fetch(`${API_BASE_URL}/api/pick-directory?test_mode=true`, { method: 'POST' });
+      let fjson: any = null;
+      try { fjson = await fallback.json(); } catch { fjson = null; }
+      
+      if (fallback.ok && fjson && fjson.success && fjson.path) {
+        await loadDirectory(fjson.path);
+        return;
+      }
+      
+      // If everything fails, open the default test-directory
+      console.warn('Directory picker unavailable, opening default test directory');
+      await loadDirectory('test-directory');
+      
     } catch (error) {
       console.error('Directory picker error:', error);
+      // Final fallback: open test-directory
+      try {
+        await loadDirectory('test-directory');
+      } catch (fallbackError) {
+        console.error('Failed to open fallback directory:', fallbackError);
+      }
     }
   }, [loadDirectory]);
 

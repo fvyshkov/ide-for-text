@@ -911,14 +911,34 @@ async def pick_directory_api(test_mode: bool = False):
                 return {"path": os.path.abspath(folder_path), "success": True}
             return {"path": None, "success": False, "message": "User cancelled"}
 
-        # No picker available
-        raise HTTPException(status_code=501, detail="System folder picker not available")
+        # No picker available - check if we're in a hosted environment
+        print("No GUI folder picker available")
+        # Check for common hosted environment indicators
+        is_hosted = (
+            os.getenv("RENDER") or  # Render.com
+            os.getenv("VERCEL") or  # Vercel
+            os.getenv("NETLIFY") or  # Netlify
+            os.getenv("HEROKU_APP_NAME") or  # Heroku
+            os.getenv("AWS_LAMBDA_FUNCTION_NAME") or  # AWS Lambda
+            not os.getenv("DISPLAY")  # No display environment
+        )
+        
+        if is_hosted:
+            # In hosted environments, return test directory instead of error
+            print("Detected hosted environment, returning test directory")
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            test_dir = os.path.join(project_root, "test-directory")
+            return {"path": test_dir, "success": True, "message": "Using default directory in hosted environment"}
+        else:
+            return {"path": None, "success": False, "message": "System folder picker not available"}
+            
     except subprocess.TimeoutExpired:
         print("Folder picker timeout")
         return {"path": None, "success": False, "message": "Dialog timeout"}
     except Exception as e:
         print(f"Folder picker error: {e}")
-        raise HTTPException(status_code=500, detail=f"Error opening folder picker: {str(e)}")
+        # Don't raise HTTP error, return failure response instead
+        return {"path": None, "success": False, "message": f"Error opening folder picker: {str(e)}"}
 
 @app.post("/api/open-file")
 async def open_file(request: FileReadRequest):
