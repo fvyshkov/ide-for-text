@@ -10,6 +10,13 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { API_BASE_URL } from './utils/config';
 // Native directory picker functionality
 import { FaSun, FaMoon, FaFolder, FaSync } from 'react-icons/fa';
+import {
+  isFileSystemAccessSupported,
+  readDirectoryTree,
+  readFileFromHandle,
+  writeFileToHandle,
+  fileSystemStore
+} from './utils/fileSystemAccess';
 
 // Derive WS endpoint from API base
 const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
@@ -22,6 +29,7 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<FileContent | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [clientSideMode, setClientSideMode] = useState<boolean>(false);
   const aiChatRef = useRef<any>(null);
   const updateEditorContentRef = useRef<((content: string) => void) | null>(null);
   // No upload UI per request
@@ -123,15 +131,29 @@ function App() {
   const loadFileContent = useCallback(async (filePath: string) => {
     setIsLoading(true);
     try {
+      // In client-side mode, read from FileSystemDirectoryHandle
+      if (clientSideMode) {
+        const rootHandle = fileSystemStore.getRoot();
+        if (!rootHandle) {
+          throw new Error('No directory handle available');
+        }
+
+        const content = await readFileFromHandle(rootHandle, filePath);
+        setFileContent(content);
+        setIsLoading(false);
+        return;
+      }
+
+      // Otherwise use backend API
       const response = await fetch(`${API_BASE_URL}/api/file-content?path=${encodeURIComponent(filePath)}`);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       // Check the Content-Type of the response
       const contentType = response.headers.get('Content-Type');
-      
+
       if (contentType && contentType.startsWith('image/')) {
         // For images, create a special file content object
         setFileContent({
@@ -151,7 +173,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clientSideMode]);
 
   const loadDirectory = useCallback(async (directoryPath: string) => {
     setIsLoading(true);
@@ -276,7 +298,40 @@ function App() {
   const openDirectory = useCallback(async () => {
     console.log('🔍 Open Directory button clicked');
     try {
-      // Try backend system folder picker first (works on both local and hosted environments)
+      // On hosted environments, use client-side File System Access API if available
+      const isHosted = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+
+      if (isHosted && isFileSystemAccessSupported()) {
+        console.log('🌐 Using client-side File System Access API');
+        // Use browser's native directory picker
+        // @ts-ignore
+        const dirHandle: FileSystemDirectoryHandle = await window.showDirectoryPicker();
+
+        setIsLoading(true);
+
+        // Read directory tree client-side
+        const tree = await readDirectoryTree(dirHandle);
+
+        // Store the directory handle for future operations
+        fileSystemStore.setRoot(dirHandle, dirHandle.name);
+
+        setFileTree(tree);
+        setRootPath(dirHandle.name);
+        setClientSideMode(true);
+
+        console.log('✅ Client-side directory loaded:', dirHandle.name);
+        setIsLoading(false);
+        return;
+      }
+
+      if (isHosted) {
+        console.log('⚠️ File System Access API not supported, using test-directory');
+        // Fallback to test-directory if API not supported
+        await loadDirectory('test-directory');
+        return;
+      }
+
+      // Use backend system folder picker for reliable full path (localhost)
       console.log('📡 Calling backend picker:', `${API_BASE_URL}/api/pick-directory`);
       const response = await fetch(`${API_BASE_URL}/api/pick-directory`, {
         method: 'POST',
@@ -341,8 +396,26 @@ function App() {
 
   const refreshFileTree = useCallback(async () => {
     if (!rootPath) return;
+
+    // In client-side mode, re-read the directory tree
+    if (clientSideMode) {
+      const rootHandle = fileSystemStore.getRoot();
+      if (!rootHandle) return;
+
+      setIsLoading(true);
+      try {
+        const tree = await readDirectoryTree(rootHandle);
+        setFileTree(tree);
+      } catch (error) {
+        console.error('Error refreshing file tree:', error);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     await loadDirectory(rootPath);
-  }, [rootPath, loadDirectory]);
+  }, [rootPath, loadDirectory, clientSideMode]);
 
   // Auto-load directory on startup
   useEffect(() => {
@@ -379,9 +452,20 @@ function App() {
   const handleFileContentChange = useCallback(async (newContent: string) => {
     if (!selectedFile) return;
 
-    // Saving to backend
     try {
-      // Save to backend
+      // In client-side mode, write to FileSystemDirectoryHandle
+      if (clientSideMode) {
+        const rootHandle = fileSystemStore.getRoot();
+        if (!rootHandle) {
+          throw new Error('No directory handle available');
+        }
+
+        await writeFileToHandle(rootHandle, selectedFile, newContent);
+        console.log('File saved successfully (client-side):', selectedFile);
+        return;
+      }
+
+      // Otherwise save to backend
       const response = await fetch(`${API_BASE_URL}/api/write-file`, {
         method: 'POST',
         headers: {
@@ -405,7 +489,7 @@ function App() {
       console.error('Error saving file:', error);
       alert('Error saving file.');
     }
-  }, [selectedFile, sendMessage, tabId]);
+  }, [selectedFile, sendMessage, tabId, clientSideMode]);
 
 
 
