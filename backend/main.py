@@ -105,6 +105,12 @@ async def startup_event():
 # In production, set FRONTEND_ORIGINS as comma-separated list, e.g. "https://your-frontend.onrender.com"
 origins_env = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000")
 allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+
+# Temporarily allow all origins for debugging (remove in production)
+if not allow_origins or allow_origins == ["http://localhost:3000"]:
+    print("⚠️ WARNING: Allowing all origins (FRONTEND_ORIGINS not set)")
+    allow_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
