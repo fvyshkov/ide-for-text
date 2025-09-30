@@ -107,14 +107,17 @@ origins_env = os.getenv("FRONTEND_ORIGINS", "http://localhost:3000")
 allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
 
 # Temporarily allow all origins for debugging (remove in production)
+# Note: allow_credentials must be False when allow_origins is "*"
+allow_credentials = True
 if not allow_origins or allow_origins == ["http://localhost:3000"]:
     print("⚠️ WARNING: Allowing all origins (FRONTEND_ORIGINS not set)")
     allow_origins = ["*"]
+    allow_credentials = False
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
